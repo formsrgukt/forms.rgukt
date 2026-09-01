@@ -12,6 +12,13 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+const requiredKeys = ['apiKey', 'authDomain', 'projectId'] as const;
+for (const key of requiredKeys) {
+  if (!firebaseConfig[key]) {
+    console.error(`CRITICAL ERROR: Firebase ${key} is completely missing! Check Vercel Environment Variables.`);
+  }
+}
+
 // Initialize Firebase only if it hasn't been initialized already (important for Next.js)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
