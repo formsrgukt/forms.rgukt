@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   Palette, Eye, MoreVertical, PlusCircle, Type, Layers, 
   ChevronUp, ChevronDown, Copy, Trash2, GripVertical, X,
@@ -72,6 +73,7 @@ export default function FormEditor() {
   const params = useParams();
   const formId = params.formId as string;
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
 
   const [form, setForm] = useState<FormSchema | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -95,6 +97,12 @@ export default function FormEditor() {
 
   // Load Form Data from Firestore
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
     const fetchData = async () => {
       try {
         const [formSnap, qSnap] = await Promise.all([
@@ -103,7 +111,13 @@ export default function FormEditor() {
         ]);
         
         if (formSnap.exists()) {
-          setForm({ id: formSnap.id, ...formSnap.data() } as FormSchema);
+          const formData = formSnap.data() as FormSchema;
+          if (formData.ownerId !== user.uid) {
+            toast.error("Unauthorized: You do not own this form");
+            router.push("/");
+            return;
+          }
+          setForm({ id: formSnap.id, ...formData });
         } else {
           toast.error("Form not found");
           router.push("/");
@@ -140,7 +154,7 @@ export default function FormEditor() {
     };
     
     fetchData();
-  }, [formId, router]);
+  }, [formId, router, user, authLoading]);
 
   // Load responses when tab is active
   useEffect(() => {
@@ -358,7 +372,7 @@ export default function FormEditor() {
     }
   };
 
-  if (loading || !form) {
+  if (authLoading || loading || !form) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

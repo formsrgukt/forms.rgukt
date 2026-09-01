@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { Search, User, FileText, Settings, MoreVertical, Plus } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, addDoc, deleteDoc, doc, writeBatch, where, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
@@ -27,6 +28,7 @@ interface FormSchema {
 
 export default function Dashboard() {
   const router = useRouter();
+  const { user, loading: authLoading, signOut } = useAuth();
   const [forms, setForms] = useState<FormSchema[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -34,10 +36,22 @@ export default function Dashboard() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
   const fetchForms = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const q = query(collection(db, "forms"), orderBy("created_at", "desc"), limit(20));
+      const q = query(
+        collection(db, "forms"), 
+        where("ownerId", "==", user.uid),
+        orderBy("created_at", "desc"), 
+        limit(20)
+      );
       const querySnapshot = await getDocs(q);
       
       const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
@@ -71,10 +85,16 @@ export default function Dashboard() {
   };
 
   const loadMoreForms = async () => {
-    if (!lastVisible || loadingMore) return;
+    if (!lastVisible || loadingMore || !user) return;
     setLoadingMore(true);
     try {
-      const q = query(collection(db, "forms"), orderBy("created_at", "desc"), startAfter(lastVisible), limit(20));
+      const q = query(
+        collection(db, "forms"), 
+        where("ownerId", "==", user.uid),
+        orderBy("created_at", "desc"), 
+        startAfter(lastVisible), 
+        limit(20)
+      );
       const querySnapshot = await getDocs(q);
       
       const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
@@ -104,13 +124,17 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchForms();
-  }, []);
+    if (user) {
+      fetchForms();
+    }
+  }, [user]);
 
   const createForm = async (title: string = "Untitled Form") => {
+    if (!user) return;
     setLoading(true);
     try {
       const docRef = await addDoc(collection(db, "forms"), {
+        ownerId: user.uid,
         title: title,
         description: "",
         theme: "purple",
@@ -151,6 +175,14 @@ export default function Dashboard() {
     }
   };
 
+  if (authLoading || !user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Top Navbar */}
@@ -178,15 +210,18 @@ export default function Dashboard() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full bg-muted">
-                  <User className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="rounded-full bg-muted overflow-hidden">
+                  {user?.photoURL ? (
+                    <img src={user.photoURL} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
                   <span className="sr-only">Profile menu</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
-                <DropdownMenuItem>Logout</DropdownMenuItem>
+                <DropdownMenuItem className="font-medium text-xs text-muted-foreground">{user?.email}</DropdownMenuItem>
+                <DropdownMenuItem onClick={signOut}>Logout</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -195,7 +230,7 @@ export default function Dashboard() {
 
       <main className="container mx-auto max-w-6xl py-8 px-4 sm:px-6">
         <div className="mb-12">
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Good morning, Faculty</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Good morning{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}</h1>
           <p className="text-muted-foreground">What would you like to create?</p>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6">
