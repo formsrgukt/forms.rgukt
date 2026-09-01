@@ -1,268 +1,267 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import styles from "./page.module.css";
+import { Search, User, FileText, Settings, MoreVertical, Plus } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, addDoc, deleteDoc, doc, writeBatch, where, getCountFromServer } from "firebase/firestore";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
-// Types
-type Form = {
+interface FormSchema {
   id: string;
   title: string;
+  description: string;
   theme: string;
   created_at: string;
-};
+  response_count?: number;
+}
 
-export default function Home() {
+export default function Dashboard() {
   const router = useRouter();
-  const [forms, setForms] = useState<Form[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Toast State
-  const [toasts, setToasts] = useState<{id: number, message: string}[]>([]);
-  
-  // Delete Modal State
-  const [deleteFormId, setDeleteFormId] = useState<string | null>(null);
+  const [forms, setForms] = useState<FormSchema[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load initial data from Supabase
-  useEffect(() => {
-    const fetchForms = async () => {
-      const { data, error } = await supabase
-        .from('forms')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Error fetching forms:", error);
-        showToast("Error loading forms");
-      } else {
-        setForms(data || []);
+  const fetchForms = async () => {
+    try {
+      const q = query(collection(db, "forms"), orderBy("created_at", "desc"));
+      const querySnapshot = await getDocs(q);
+      const formsList: FormSchema[] = [];
+      
+      for (const d of querySnapshot.docs) {
+        const formData = { id: d.id, ...d.data() } as FormSchema;
+        
+        // Fetch response count for this form
+        try {
+          const resQ = query(collection(db, "responses"), where("form_id", "==", d.id));
+          const snapshot = await getCountFromServer(resQ);
+          formData.response_count = snapshot.data().count;
+        } catch (err) {
+          console.error("Error fetching count", err);
+          formData.response_count = 0;
+        }
+        
+        formsList.push(formData);
       }
-      setIsLoading(false);
-    };
+      
+      setForms(formsList);
+    } catch (error) {
+      console.error("Error fetching forms:", error);
+      toast.error("Failed to load forms");
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchForms();
   }, []);
 
-  const showToast = (message: string) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
-  };
-
-  // Actions
-  const createForm = async (type: string) => {
-    setIsLoading(true);
-    let title = "Untitled Form";
-    if (type !== "Blank") title = type;
-    
-    // Insert into Supabase
-    const { data, error } = await supabase
-      .from('forms')
-      .insert([{ title, theme: 'purple' }])
-      .select()
-      .single();
-
-    if (error || !data) {
+  const createForm = async (title: string = "Untitled Form") => {
+    setLoading(true);
+    try {
+      const docRef = await addDoc(collection(db, "forms"), {
+        title: title,
+        description: "",
+        theme: "purple",
+        created_at: new Date().toISOString(),
+      });
+      toast.success("Form created successfully");
+      router.push(`/forms/${docRef.id}/edit`);
+    } catch (error) {
       console.error("Error creating form:", error);
-      showToast("Error creating form");
-      setIsLoading(false);
-      return;
+      toast.error("Error creating form");
+      setLoading(false);
     }
-
-    setForms([data, ...forms]);
-    setIsLoading(false);
-    showToast(`Created new ${type} form`);
-    router.push(`/forms/${data.id}/edit`);
   };
 
-  const handleDelete = async () => {
-    if (!deleteFormId) return;
+  const deleteForm = async (formId: string) => {
+    if (!window.confirm("Are you sure you want to delete this form? This action cannot be undone.")) return;
     
-    const { error } = await supabase
-      .from('forms')
-      .delete()
-      .eq('id', deleteFormId);
+    try {
+      // 1. Delete the form document
+      await deleteDoc(doc(db, "forms", formId));
+      
+      // 2. Delete all questions for this form
+      const qSnap = await getDocs(query(collection(db, "questions"), where("form_id", "==", formId)));
+      const batch = writeBatch(db);
+      qSnap.docs.forEach((d) => batch.delete(d.ref));
+      
+      // 3. Delete all responses for this form
+      const rSnap = await getDocs(query(collection(db, "responses"), where("form_id", "==", formId)));
+      rSnap.docs.forEach((d) => batch.delete(d.ref));
+      
+      await batch.commit();
 
-    if (error) {
+      setForms(forms.filter(f => f.id !== formId));
+      toast.success("Form and all associated data deleted");
+    } catch (error) {
       console.error("Error deleting form:", error);
-      showToast("Error deleting form");
-    } else {
-      const updated = forms.filter(f => f.id !== deleteFormId);
-      setForms(updated);
-      showToast("Form deleted successfully");
+      toast.error("Error deleting form");
     }
-    setDeleteFormId(null);
   };
-
-  const filteredForms = forms.filter(f => 
-    f.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
-    <div className={styles.pageWrapper}>
-      {/* Top Bar */}
-      <header className={styles.topBar}>
-        <div className={styles.logoArea}>
-          <div className={styles.logoIcon}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" fill="currentColor"/>
-              <path d="M14 2V8H20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M8 13H16M8 17H16M8 9H10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+    <div className="min-h-screen bg-background">
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto max-w-6xl flex h-16 items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-8 h-8 rounded bg-primary text-primary-foreground font-bold">R</div>
+            <span className="font-bold text-lg hidden sm:inline-block">RGUKT Forms</span>
           </div>
-          RGUKT Forms
-        </div>
-        
-        <div className={styles.searchContainer}>
-          <input 
-            type="text" 
-            placeholder="Search forms..." 
-            className={styles.searchBar}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        
-        <div className={styles.navArea}>
-          <Link href="/login" className={styles.authButton}>
-            Sign in
-          </Link>
+          
+          <div className="flex flex-1 items-center justify-center px-6">
+            <div className="w-full max-w-md relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search forms..."
+                className="w-full bg-muted shadow-none appearance-none pl-9 rounded-full border-transparent focus-visible:ring-1"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Button variant="ghost" size="icon" className="md:hidden">
+              <Search className="h-5 w-5" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full bg-muted">
+                  <User className="h-5 w-5" />
+                  <span className="sr-only">Profile menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem>Logout</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
-      <main>
-        {/* Template Gallery */}
-        <section className={styles.templateSection}>
-          <div className={styles.templateContainer}>
-            <h2 className={styles.sectionTitle}>Start a new form</h2>
-            <div className={styles.templateCards}>
-              
-              <div 
-                className={styles.templateCard} 
-                style={{ borderColor: 'var(--border-color)', background: 'var(--bg-card)' }}
-                onClick={() => createForm("Blank")}
-              >
-                <div className={styles.templateIcon} style={{ fontSize: '3rem', color: '#db4437' }}>+</div>
-                <span className={styles.templateLabel}>Blank</span>
-              </div>
-              
-              <div className={styles.templateCard} onClick={() => createForm("Contact Information")}>
-                <div className={styles.templateIcon} style={{ fontSize: '2rem' }}>📱</div>
-                <span className={styles.templateLabel}>Contact Information</span>
-              </div>
-              
-              <div className={styles.templateCard} onClick={() => createForm("RSVP")}>
-                <div className={styles.templateIcon} style={{ fontSize: '2rem' }}>✉️</div>
-                <span className={styles.templateLabel}>RSVP</span>
-              </div>
-              
-              <div className={styles.templateCard} onClick={() => createForm("Party Invite")}>
-                <div className={styles.templateIcon} style={{ fontSize: '2rem' }}>🎉</div>
-                <span className={styles.templateLabel}>Party Invite</span>
-              </div>
-              
-            </div>
-          </div>
-        </section>
-
-        {/* Recent Forms */}
-        <section className={styles.recentSection}>
-          <div className={styles.recentHeader}>
-            <h2 className={styles.recentHeaderTitle}>Recent forms</h2>
-          </div>
+      <main className="container mx-auto max-w-6xl py-8 px-4 sm:px-6">
+        <div className="mb-12">
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Good morning, Faculty</h1>
+          <p className="text-muted-foreground">What would you like to create?</p>
           
-          {isLoading ? (
-            <div className={styles.emptyState}>
-              <div className={styles.spinner}></div>
-              <p style={{ marginTop: '1rem' }}>Loading your forms...</p>
-            </div>
-          ) : filteredForms.length === 0 ? (
-            <div className={styles.emptyState}>
-              <p>No forms found. Create one above!</p>
-            </div>
-          ) : (
-            <div className={styles.formsGrid}>
-              {filteredForms.map((form) => (
-                <div key={form.id} className={styles.formCard} onClick={() => router.push(`/forms/${form.id}/edit`)}>
-                  <div className={styles.formCardPreview}>
-                    📄
-                  </div>
-                  <div className={styles.formCardContent}>
-                    <h3 className={styles.formCardTitle}>{form.title}</h3>
-                    <p className={styles.formCardDate}>
-                      {new Date(form.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className={styles.formCardActions} onClick={(e) => e.stopPropagation()}>
-                    <button 
-                      className={styles.actionIconBtn} 
-                      title="Preview"
-                      onClick={() => showToast(`Previewing ${form.title}`)}
-                    >
-                      👁️
-                    </button>
-                    <button 
-                      className={styles.actionIconBtn} 
-                      title="Responses"
-                      onClick={() => showToast(`Viewing responses for ${form.title}`)}
-                    >
-                      📊
-                    </button>
-                    <button 
-                      className={styles.actionIconBtn} 
-                      title="Share"
-                      onClick={() => showToast(`Share link copied for ${form.title}`)}
-                    >
-                      🔗
-                    </button>
-                    <button 
-                      className={`${styles.actionIconBtn} ${styles.delete}`} 
-                      title="Delete"
-                      onClick={() => setDeleteFormId(form.id)}
-                    >
-                      🗑️
-                    </button>
-                  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6">
+            <Card className="cursor-pointer hover:border-primary transition-colors hover:shadow-md border-muted" onClick={() => createForm("Untitled Form")}>
+              <CardHeader className="pb-4">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
+                  <Plus className="h-5 w-5" />
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-
-      {/* Delete Confirmation Modal */}
-      {deleteFormId && (
-        <div className={styles.modalOverlay} onClick={() => setDeleteFormId(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 className={styles.modalTitle}>Delete form?</h3>
-            <p className={styles.modalText}>
-              Are you sure you want to delete this form? This action cannot be undone.
-            </p>
-            <div className={styles.modalActions}>
-              <button className={styles.btnCancel} onClick={() => setDeleteFormId(null)}>
-                Cancel
-              </button>
-              <button className={styles.btnDelete} onClick={handleDelete}>
-                Delete
-              </button>
-            </div>
+                <CardTitle className="text-lg">Blank Form</CardTitle>
+                <CardDescription>Start fresh</CardDescription>
+              </CardHeader>
+            </Card>
+            
+            <Card className="cursor-pointer hover:border-secondary transition-colors hover:shadow-md border-muted" onClick={() => createForm("Student Feedback")}>
+              <CardHeader className="pb-4">
+                <div className="h-10 w-10 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center mb-2">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <CardTitle className="text-lg">Feedback</CardTitle>
+                <CardDescription>Collect student feedback</CardDescription>
+              </CardHeader>
+            </Card>
+            
+            <Card className="cursor-pointer hover:border-success transition-colors hover:shadow-md border-muted" onClick={() => createForm("Event Registration")}>
+              <CardHeader className="pb-4">
+                <div className="h-10 w-10 rounded-lg bg-success/10 text-success flex items-center justify-center mb-2">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <CardTitle className="text-lg">Registration</CardTitle>
+                <CardDescription>Register participants</CardDescription>
+              </CardHeader>
+            </Card>
           </div>
         </div>
-      )}
 
-      {/* Toasts */}
-      <div className={styles.toastContainer}>
-        {toasts.map(toast => (
-          <div key={toast.id} className={styles.toast}>
-            {toast.message}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold tracking-tight">Recent Forms</h2>
           </div>
-        ))}
-      </div>
+          
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map(i => (
+                <Card key={i} className="animate-pulse border-muted">
+                  <div className="h-32 bg-muted/50 rounded-t-lg" />
+                  <CardContent className="py-4">
+                    <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-muted rounded w-1/2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : forms.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {forms.map(form => (
+                <Card key={form.id} className="group overflow-hidden flex flex-col h-full hover:shadow-md transition-all border-muted">
+                  <div 
+                    className="h-32 bg-gradient-to-r from-primary/10 to-primary/5 border-b flex items-center justify-center text-primary/30 group-hover:text-primary/50 transition-colors cursor-pointer" 
+                    onClick={() => router.push(`/forms/${form.id}/edit`)}
+                  >
+                    <FileText className="h-10 w-10" />
+                  </div>
+                  <CardContent className="p-4 flex-grow cursor-pointer" onClick={() => router.push(`/forms/${form.id}/edit`)}>
+                    <h3 className="font-semibold text-base line-clamp-1">{form.title || "Untitled Form"}</h3>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Updated {new Date(form.created_at).toLocaleDateString()}
+                    </p>
+                  </CardContent>
+                  <CardFooter className="px-4 py-3 bg-muted/30 border-t flex items-center justify-between mt-auto">
+                    {form.response_count ? (
+                      <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded border border-primary/20">{form.response_count} Responses</span>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground bg-background px-2 py-1 rounded border">Draft</span>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/forms/${form.id}/edit`)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.open(`/forms/${form.id}/view`, '_blank')}>Preview</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => deleteForm(form.id)}>Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/10">
+              <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-semibold">No forms created</h3>
+                <p className="text-sm text-muted-foreground mb-6 mt-2">
+                  You haven't created any forms yet. Start collecting responses now.
+                </p>
+                <Button onClick={() => createForm("Untitled Form")}>
+                  <Plus className="mr-2 h-4 w-4" /> Create Form
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

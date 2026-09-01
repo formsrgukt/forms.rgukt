@@ -361,6 +361,181 @@
   cursor: grabbing;
 }
 
+/* Tabs */
+.tabsContainer {
+  display: flex;
+  justify-content: center;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 61px;
+  z-index: 40;
+}
+
+.tabBtn {
+  padding: 1rem 2rem;
+  background: transparent;
+  border: none;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+}
+
+.tabBtn:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+}
+
+.tabBtn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* Settings Tab */
+.settingsSection {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.settingsSectionHeader {
+  padding: 1rem 1.5rem;
+  font-weight: 500;
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-hover);
+}
+
+.settingsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settingsRow:last-child {
+  border-bottom: none;
+}
+
+.settingsLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settingsLabel strong {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.settingsLabel span {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.settingsInput {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  width: 250px;
+}
+
+.settingsSelect {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-main);
+  min-width: 150px;
+}
+
+/* Theme Drawer */
+.themeDrawerOverlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.2);
+  z-index: 100;
+}
+
+.themeDrawer {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 320px;
+  background: var(--bg-card);
+  box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+}
+
+.themeDrawerHeader {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  font-size: 1.1rem;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.closeBtn:hover {
+  color: var(--text-main);
+}
+
+.themeDrawerContent {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.themeGroup h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.colorPickerGrid {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.colorSwatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.colorSwatch.active {
+  border-color: var(--text-main);
+  transform: scale(1.1);
+}
+
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
   .topBar {
