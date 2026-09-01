@@ -34,23 +34,23 @@ export default function Dashboard() {
     try {
       const q = query(collection(db, "forms"), orderBy("created_at", "desc"));
       const querySnapshot = await getDocs(q);
-      const formsList: FormSchema[] = [];
-      
-      for (const d of querySnapshot.docs) {
-        const formData = { id: d.id, ...d.data() } as FormSchema;
-        
-        // Fetch response count for this form
-        try {
-          const resQ = query(collection(db, "responses"), where("form_id", "==", d.id));
-          const snapshot = await getCountFromServer(resQ);
-          formData.response_count = snapshot.data().count;
-        } catch (err) {
-          console.error("Error fetching count", err);
-          formData.response_count = 0;
-        }
-        
-        formsList.push(formData);
-      }
+      const formsList: FormSchema[] = await Promise.all(
+        querySnapshot.docs.map(async (d) => {
+          const formData = { id: d.id, ...d.data() } as FormSchema;
+          
+          // Fetch response count concurrently for speed
+          try {
+            const resQ = query(collection(db, "responses"), where("form_id", "==", d.id));
+            const snapshot = await getCountFromServer(resQ);
+            formData.response_count = snapshot.data().count;
+          } catch (err) {
+            console.error("Error fetching count", err);
+            formData.response_count = 0;
+          }
+          
+          return formData;
+        })
+      );
       
       setForms(formsList);
     } catch (error) {
