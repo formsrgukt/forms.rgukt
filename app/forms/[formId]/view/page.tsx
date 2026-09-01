@@ -73,7 +73,11 @@ export default function FormViewer() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const formSnap = await getDoc(doc(db, "forms", formId));
+        const [formSnap, qSnap] = await Promise.all([
+          getDoc(doc(db, "forms", formId)),
+          getDocs(query(collection(db, "questions"), where("form_id", "==", formId)))
+        ]);
+        
         if (!formSnap.exists()) {
           setError("Form not found.");
           setLoading(false);
@@ -81,7 +85,6 @@ export default function FormViewer() {
         }
         setForm({ id: formSnap.id, ...formSnap.data() } as FormSchema);
 
-        const qSnap = await getDocs(query(collection(db, "questions"), where("form_id", "==", formId)));
         let qList = qSnap.docs.map(d => ({ id: d.id, ...d.data() } as Question));
         qList.sort((a, b) => a.order - b.order);
         

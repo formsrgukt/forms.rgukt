@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, User, FileText, Settings, MoreVertical, Plus } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, getDocs, addDoc, deleteDoc, doc, writeBatch, where, getCountFromServer } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, addDoc, deleteDoc, doc, writeBatch, where, getCountFromServer, limit, startAfter, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,16 +29,25 @@ export default function Dashboard() {
   const router = useRouter();
   const [forms, setForms] = useState<FormSchema[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const fetchForms = async () => {
+    setLoading(true);
     try {
-      const q = query(collection(db, "forms"), orderBy("created_at", "desc"));
+      const q = query(collection(db, "forms"), orderBy("created_at", "desc"), limit(20));
       const querySnapshot = await getDocs(q);
+      
+      const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+      setLastVisible(lastVisibleDoc || null);
+      setHasMore(querySnapshot.docs.length === 20);
+
       const formsList: FormSchema[] = await Promise.all(
         querySnapshot.docs.map(async (d) => {
           const formData = { id: d.id, ...d.data() } as FormSchema;
           
-          // Fetch response count concurrently for speed
           try {
             const resQ = query(collection(db, "responses"), where("form_id", "==", d.id));
             const snapshot = await getCountFromServer(resQ);
@@ -58,6 +67,39 @@ export default function Dashboard() {
       toast.error("Failed to load forms");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreForms = async () => {
+    if (!lastVisible || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const q = query(collection(db, "forms"), orderBy("created_at", "desc"), startAfter(lastVisible), limit(20));
+      const querySnapshot = await getDocs(q);
+      
+      const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+      setLastVisible(lastVisibleDoc || null);
+      setHasMore(querySnapshot.docs.length === 20);
+
+      const newFormsList: FormSchema[] = await Promise.all(
+        querySnapshot.docs.map(async (d) => {
+          const formData = { id: d.id, ...d.data() } as FormSchema;
+          try {
+            const resQ = query(collection(db, "responses"), where("form_id", "==", d.id));
+            const snapshot = await getCountFromServer(resQ);
+            formData.response_count = snapshot.data().count;
+          } catch (err) {
+            formData.response_count = 0;
+          }
+          return formData;
+        })
+      );
+      setForms(prev => [...prev, ...newFormsList]);
+    } catch (error) {
+      console.error("Error fetching more forms:", error);
+      toast.error("Failed to load more forms");
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -207,42 +249,52 @@ export default function Dashboard() {
               ))}
             </div>
           ) : forms.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {forms.map(form => (
-                <Card key={form.id} className="group overflow-hidden flex flex-col h-full hover:shadow-md transition-all border-muted">
-                  <div 
-                    className="h-32 bg-gradient-to-r from-primary/10 to-primary/5 border-b flex items-center justify-center text-primary/30 group-hover:text-primary/50 transition-colors cursor-pointer" 
-                    onClick={() => router.push(`/forms/${form.id}/edit`)}
-                  >
-                    <FileText className="h-10 w-10" />
-                  </div>
-                  <CardContent className="p-4 flex-grow cursor-pointer" onClick={() => router.push(`/forms/${form.id}/edit`)}>
-                    <h3 className="font-semibold text-base line-clamp-1">{form.title || "Untitled Form"}</h3>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Updated {new Date(form.created_at).toLocaleDateString()}
-                    </p>
-                  </CardContent>
-                  <CardFooter className="px-4 py-3 bg-muted/30 border-t flex items-center justify-between mt-auto">
-                    {form.response_count ? (
-                      <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded border border-primary/20">{form.response_count} Responses</span>
-                    ) : (
-                      <span className="text-xs font-medium text-muted-foreground bg-background px-2 py-1 rounded border">Draft</span>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/forms/${form.id}/edit`)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => window.open(`/forms/${form.id}/view`, '_blank')}>Preview</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => deleteForm(form.id)}>Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </CardFooter>
-                </Card>
-              ))}
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {forms.map(form => (
+                  <Card key={form.id} className="group overflow-hidden flex flex-col h-full hover:shadow-md transition-all border-muted">
+                    <div 
+                      className="h-32 bg-gradient-to-r from-primary/10 to-primary/5 border-b flex items-center justify-center text-primary/30 group-hover:text-primary/50 transition-colors cursor-pointer" 
+                      onClick={() => router.push(`/forms/${form.id}/edit`)}
+                    >
+                      <FileText className="h-10 w-10" />
+                    </div>
+                    <CardContent className="p-4 flex-grow cursor-pointer" onClick={() => router.push(`/forms/${form.id}/edit`)}>
+                      <h3 className="font-semibold text-base line-clamp-1">{form.title || "Untitled Form"}</h3>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Updated {new Date(form.created_at).toLocaleDateString()}
+                      </p>
+                    </CardContent>
+                    <CardFooter className="px-4 py-3 bg-muted/30 border-t flex items-center justify-between mt-auto">
+                      {form.response_count ? (
+                        <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded border border-primary/20">{form.response_count} Responses</span>
+                      ) : (
+                        <span className="text-xs font-medium text-muted-foreground bg-background px-2 py-1 rounded border">Draft</span>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/forms/${form.id}/edit`)}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.open(`/forms/${form.id}/view`, '_blank')}>Preview</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => deleteForm(form.id)}>Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
+              
+              {hasMore && (
+                <div className="flex justify-center mt-8">
+                  <Button variant="outline" onClick={loadMoreForms} disabled={loadingMore}>
+                    {loadingMore ? "Loading..." : "Load More"}
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/10">

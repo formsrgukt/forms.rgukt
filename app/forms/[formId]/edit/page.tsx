@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -9,7 +9,7 @@ import {
   CheckCircle2, Loader2, ArrowLeft, Send
 } from 'lucide-react';
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, writeBatch, collection, getDocs, query, where, setDoc, deleteDoc, orderBy } from "firebase/firestore";
+import { doc, getDoc, updateDoc, writeBatch, collection, getDocs, query, where, setDoc, deleteDoc, orderBy, limit, startAfter } from "firebase/firestore";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -84,9 +84,14 @@ export default function FormEditor() {
   const [loading, setLoading] = useState(true);
   const [formResponses, setFormResponses] = useState<any[]>([]);
   const [loadingResponses, setLoadingResponses] = useState(false);
+  const [lastResVisible, setLastResVisible] = useState<any>(null);
+  const [hasMoreRes, setHasMoreRes] = useState(false);
+  const [loadingMoreRes, setLoadingMoreRes] = useState(false);
+  const [deletedQuestionIds, setDeletedQuestionIds] = useState<Set<string>>(new Set());
   
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoad = useRef(true);
+  const hasFetchedResponses = useRef(false);
 
   // Load Form Data from Firestore
   useEffect(() => {
@@ -139,21 +144,31 @@ export default function FormEditor() {
 
   // Load responses when tab is active
   useEffect(() => {
-    if (activeTab === "responses") {
+    if (activeTab === "responses" && !hasFetchedResponses.current) {
       const fetchResponses = async () => {
         setLoadingResponses(true);
         try {
-          const resSnap = await getDocs(query(collection(db, "responses"), where("form_id", "==", formId)));
+          const q = query(
+            collection(db, "responses"),
+            where("form_id", "==", formId),
+            orderBy("submitted_at", "desc"),
+            limit(20)
+          );
+          const resSnap = await getDocs(q);
+          
+          const lastVisibleDoc = resSnap.docs[resSnap.docs.length - 1];
+          setLastResVisible(lastVisibleDoc || null);
+          setHasMoreRes(resSnap.docs.length === 20);
+
           const resList: any[] = [];
           resSnap.forEach(d => {
             resList.push({ id: d.id, ...d.data() });
           });
-          // Sort client-side to avoid requiring a Firebase composite index
-          resList.sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
           setFormResponses(resList);
+          hasFetchedResponses.current = true;
         } catch (err) {
           console.error("Error fetching responses:", err);
-          toast.error("Failed to load responses");
+          toast.error("Failed to load responses. Firebase Index might be building.");
         } finally {
           setLoadingResponses(false);
         }
@@ -161,6 +176,36 @@ export default function FormEditor() {
       fetchResponses();
     }
   }, [activeTab, formId]);
+
+  const loadMoreResponses = async () => {
+    if (!lastResVisible || loadingMoreRes) return;
+    setLoadingMoreRes(true);
+    try {
+      const q = query(
+        collection(db, "responses"),
+        where("form_id", "==", formId),
+        orderBy("submitted_at", "desc"),
+        startAfter(lastResVisible),
+        limit(20)
+      );
+      const resSnap = await getDocs(q);
+      
+      const lastVisibleDoc = resSnap.docs[resSnap.docs.length - 1];
+      setLastResVisible(lastVisibleDoc || null);
+      setHasMoreRes(resSnap.docs.length === 20);
+
+      const resList: any[] = [];
+      resSnap.forEach(d => {
+        resList.push({ id: d.id, ...d.data() });
+      });
+      setFormResponses(prev => [...prev, ...resList]);
+    } catch (err) {
+      console.error("Error fetching more responses:", err);
+      toast.error("Failed to load more responses");
+    } finally {
+      setLoadingMoreRes(false);
+    }
+  };
 
   // Autosave to Firestore
   useEffect(() => {
@@ -191,15 +236,13 @@ export default function FormEditor() {
         
         batch.update(formRef, formUpdateData);
 
-        // Save questions
-        const qSnap = await getDocs(query(collection(db, "questions"), where("form_id", "==", form.id)));
-        const currentIds = new Set(questions.map(q => q.id));
-        
-        qSnap.docs.forEach(d => {
-          if (!currentIds.has(d.id)) {
-            batch.delete(d.ref);
-          }
+        // Delete removed questions using local state tracker to prevent DB reads
+        deletedQuestionIds.forEach(id => {
+          batch.delete(doc(db, "questions", id));
         });
+        if (deletedQuestionIds.size > 0) {
+          setDeletedQuestionIds(new Set());
+        }
 
         questions.forEach(q => {
           const qRef = doc(db, "questions", q.id);
@@ -222,7 +265,7 @@ export default function FormEditor() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [form, questions]);
+  }, [form, questions, deletedQuestionIds]);
 
   const updateFormHeader = (key: keyof FormSchema, value: string) => {
     if (form) setForm({ ...form, [key]: value });
@@ -275,6 +318,7 @@ export default function FormEditor() {
       toast("You must have at least one question.");
       return;
     }
+    setDeletedQuestionIds(prev => new Set(prev).add(id));
     const updated = questions.filter(q => q.id !== id);
     const reordered = updated.map((q, idx) => ({ ...q, order: idx }));
     setQuestions(reordered);
@@ -460,7 +504,8 @@ export default function FormEditor() {
                     Waiting for responses. Share your form to get started.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto w-full border rounded-lg">
+                  <>
+                    <div className="overflow-x-auto w-full border rounded-lg">
                     <table className="w-full text-sm text-left border-collapse">
                       <thead className="text-xs text-muted-foreground bg-muted/50 uppercase">
                         <tr>
@@ -511,6 +556,15 @@ export default function FormEditor() {
                       </tbody>
                     </table>
                   </div>
+                  
+                  {hasMoreRes && (
+                    <div className="flex justify-center p-4 border-t">
+                      <Button variant="outline" onClick={loadMoreResponses} disabled={loadingMoreRes}>
+                        {loadingMoreRes ? "Loading..." : "Load More"}
+                      </Button>
+                    </div>
+                  )}
+                </>
                 )}
               </CardContent>
             </Card>
@@ -711,7 +765,7 @@ export default function FormEditor() {
 }
 
 // --- QuestionCard Component ---
-function QuestionCard({ 
+const QuestionCard = memo(function QuestionCard({ 
   question, 
   isActive, 
   updateQuestion, 
@@ -871,4 +925,4 @@ function QuestionCard({
       </CardFooter>
     </Card>
   );
-}
+});
