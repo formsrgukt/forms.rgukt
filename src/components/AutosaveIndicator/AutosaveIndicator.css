@@ -1,0 +1,104 @@
+.autosave-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: color 0.3s ease;
+}
+
+.autosave-indicator.status-saving {
+  color: var(--primary-500);
+}
+
+.autosave-indicator.status-saved {
+  color: var(--text-tertiary);
+}
+
+.autosave-indicator.status-error {
+  color: var(--error-600);
+}
+
+.autosave-icon-wrapper {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cloud-base {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  transition: transform 0.3s ease;
+}
+
+.status-saving .cloud-base {
+  animation: pulse-cloud 1.5s ease-in-out infinite;
+}
+
+.status-error .cloud-base {
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.inner-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+}
+
+/* Animations */
+@keyframes pulse-cloud {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
+@keyframes spin-sync {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes draw-check {
+  0% { stroke-dashoffset: 14; opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; transform: scale(1); }
+}
+
+@keyframes pop-error {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-2px, 0, 0); }
+  40%, 60% { transform: translate3d(2px, 0, 0); }
+}
+
+.sync-icon {
+  transform-origin: 12px 12.5px;
+  animation: spin-sync 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  opacity: 0.7;
+}
+
+.check-icon {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  transform-origin: 12px 12.5px;
+  animation: draw-check 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.error-icon {
+  transform-origin: 12px 12.5px;
+  animation: pop-error 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
