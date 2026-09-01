@@ -53,6 +53,7 @@ interface Question {
 
 interface FormSchema {
   id: string;
+  ownerId?: string;
   title: string;
   description: string | null;
   theme: string | null;
@@ -111,13 +112,13 @@ export default function FormEditor() {
         ]);
         
         if (formSnap.exists()) {
-          const formData = formSnap.data() as FormSchema;
+          const formData = formSnap.data();
           if (formData.ownerId !== user.uid) {
             toast.error("Unauthorized: You do not own this form");
             router.push("/");
             return;
           }
-          setForm({ id: formSnap.id, ...formData });
+          setForm({ id: formSnap.id, ...formData } as FormSchema);
         } else {
           toast.error("Form not found");
           router.push("/");
