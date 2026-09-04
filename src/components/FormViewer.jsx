@@ -2,49 +2,60 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
+import { getForm, saveResponse } from '../services/db';
+import Icon from './Icon/Icon';
+import Loader from './Loader';
 
 function FormViewer() {
   const { formId } = useParams();
   const [form, setForm] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState({});
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState({});
   const [questions, setQuestions] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const savedForms = JSON.parse(localStorage.getItem('rgukt_forms') || '[]');
-    const currentForm = savedForms.find(f => f.id === formId);
-    if (currentForm) {
-      if (currentForm.settings?.theme?.fontFamily) {
-        loadGoogleFont(currentForm.settings.theme.fontFamily);
-      }
-
-      if (!currentForm.settings) {
-        currentForm.settings = {
-          responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false },
-          privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
-          presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
-          theme: { fontFamily: 'Inter' }
-        };
-      }
-      setForm(currentForm);
+    const fetchForm = async () => {
+      setLoading(true);
+      const currentForm = await getForm(formId);
       
-      let initialQuestions = [...currentForm.questions];
-      if (currentForm.settings?.presentation?.shuffleQuestions) {
-        for (let i = initialQuestions.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [initialQuestions[i], initialQuestions[j]] = [initialQuestions[j], initialQuestions[i]];
+      if (currentForm) {
+        if (currentForm.settings?.theme?.fontFamily) {
+          loadGoogleFont(currentForm.settings.theme.fontFamily);
         }
-      }
-      setQuestions(initialQuestions);
 
-      const initialAnswers = {};
-      initialQuestions.forEach(q => {
-        initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '';
-      });
-      setAnswers(initialAnswers);
-    }
+        if (!currentForm.settings) {
+          currentForm.settings = {
+            responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false },
+            privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
+            presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
+            theme: { fontFamily: 'Inter' }
+          };
+        }
+        setForm(currentForm);
+        
+        let initialQuestions = [...currentForm.questions];
+        if (currentForm.settings?.presentation?.shuffleQuestions) {
+          for (let i = initialQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [initialQuestions[i], initialQuestions[j]] = [initialQuestions[j], initialQuestions[i]];
+          }
+        }
+        setQuestions(initialQuestions);
+
+        const initialAnswers = {};
+        initialQuestions.forEach(q => {
+          initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '';
+        });
+        setAnswers(initialAnswers);
+      }
+      setLoading(false);
+    };
+    
+    fetchForm();
   }, [formId]);
 
   const handleAnswerChange = (questionId, value, type) => {
@@ -74,7 +85,7 @@ function FormViewer() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     const newErrors = {};
@@ -110,19 +121,37 @@ function FormViewer() {
       return;
     }
 
-    setSubmitted(true);
+    try {
+      setIsSubmitting(true);
+      const responseData = {
+        answers,
+        ...(form.settings?.privacy?.collectEmail ? { email } : {})
+      };
+      await saveResponse(formId, responseData);
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      alert("There was an error submitting your form. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
 
   const currentFont = form.settings?.theme?.fontFamily || 'Inter';
   const containerStyle = {
     '--font-body': `"${currentFont}", sans-serif`,
     '--font-heading': `"${currentFont}", sans-serif`,
-    fontFamily: 'var(--font-body)'
+    fontFamily: 'var(--font-body)',
+    ...(form.settings?.theme?.color ? { '--primary-500': form.settings.theme.color } : {}),
+    ...(form.settings?.theme?.textColor ? { '--text-primary': form.settings.theme.textColor, color: form.settings.theme.textColor } : {})
   };
 
-  if (!form.settings?.responses?.acceptingResponses) {
+  const isAccepting = form.settings?.responses?.acceptingResponses !== false;
+
+  if (!isAccepting) {
     return (
       <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, marginTop: 'var(--space-10)', maxWidth: '600px', margin: '0 auto' }}>
         <div className="card" style={{ padding: 'var(--space-12) var(--space-6)', borderTop: '8px solid var(--error-500)' }}>

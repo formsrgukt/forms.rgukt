@@ -90,10 +90,12 @@
 .user-profile-mini {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-2);
   border-radius: var(--radius-md);
   cursor: pointer;
+  width: 100%;
   transition: background-color var(--transition-fast);
 }
 

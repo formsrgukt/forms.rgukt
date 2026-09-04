@@ -7,13 +7,29 @@ import Icon from './Icon/Icon';
 import FormSettings from './FormSettings';
 import AutosaveIndicator from './AutosaveIndicator/AutosaveIndicator';
 import ThemeSidebar from './ThemeSidebar';
+import CustomDropdown from './CustomDropdown';
+import Loader from './Loader';
 import { loadGoogleFont } from '../utils/fontLoader';
+import { getForm, saveForm, getResponses } from '../services/db';
+import { useToast } from '../contexts/ToastContext';
+
+const QUESTION_TYPE_OPTIONS = [
+  { value: 'short_answer', label: 'Short answer', icon: 'short_answer' },
+  { value: 'paragraph', label: 'Paragraph', icon: 'paragraph' },
+  { value: 'multiple_choice', label: 'Multiple choice', icon: 'multiple_choice' },
+  { value: 'checkboxes', label: 'Checkboxes', icon: 'checkboxes' },
+  { value: 'dropdown', label: 'Dropdown', icon: 'dropdown' }
+];
 
 function FormEditor() {
   const { formId } = useParams();
   const navigate = useNavigate();
-  const [activeQuestion, setActiveQuestion] = useState(null);
+  const { showToast } = useToast();
+  
   const [activeTab, setActiveTab] = useState('questions');
+  const [activeQuestion, setActiveQuestion] = useState(null);
+  const [responses, setResponses] = useState([]);
+  const [loadingResponses, setLoadingResponses] = useState(false);
   const [saveStatus, setSaveStatus] = useState('saved');
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showThemeSidebar, setShowThemeSidebar] = useState(false);
@@ -24,13 +40,15 @@ function FormEditor() {
 
   useEffect(() => {
     if (!initialLoadRef.current) {
-      const savedForms = JSON.parse(localStorage.getItem('rgukt_forms') || '[]');
-      const currentForm = savedForms.find(f => f.id === formId);
-      if (currentForm) {
-        setForm(currentForm);
-      } else {
-        navigate('/');
-      }
+      const fetchForm = async () => {
+        const currentForm = await getForm(formId);
+        if (currentForm) {
+          setForm(currentForm);
+        } else {
+          navigate('/');
+        }
+      };
+      fetchForm();
       initialLoadRef.current = true;
     }
   }, [formId, navigate, setForm]);
@@ -38,15 +56,30 @@ function FormEditor() {
   useEffect(() => {
     if (form && initialLoadRef.current) {
       setSaveStatus('saving');
-      const timer = setTimeout(() => {
-        const savedForms = JSON.parse(localStorage.getItem('rgukt_forms') || '[]');
-        const updatedForms = savedForms.map(f => f.id === formId ? form : f);
-        localStorage.setItem('rgukt_forms', JSON.stringify(updatedForms));
-        setSaveStatus('saved');
+      const timer = setTimeout(async () => {
+        try {
+          await saveForm(form);
+          setSaveStatus('saved');
+        } catch (error) {
+          console.error("Error saving form:", error);
+          setSaveStatus('error');
+        }
       }, 800);
       return () => clearTimeout(timer);
     }
   }, [form, formId]);
+
+  useEffect(() => {
+    if (activeTab === 'responses' && formId) {
+      const fetchFormResponses = async () => {
+        setLoadingResponses(true);
+        const fetchedResponses = await getResponses(formId);
+        setResponses(fetchedResponses);
+        setLoadingResponses(false);
+      };
+      fetchFormResponses();
+    }
+  }, [activeTab, formId]);
 
   useEffect(() => {
     if (form?.settings?.theme?.fontFamily) {
@@ -95,6 +128,7 @@ function FormEditor() {
     
     setForm({ ...form, questions: newQuestions });
     setActiveQuestion(newQuestion.id);
+    showToast('Question added');
   };
 
   const updateQuestion = (id, field, value) => {
@@ -108,6 +142,7 @@ function FormEditor() {
     const updatedQuestions = form.questions.filter(q => q.id !== id);
     setForm({ ...form, questions: updatedQuestions });
     if (activeQuestion === id) setActiveQuestion(null);
+    showToast('Question deleted', 'error');
   };
 
   const duplicateQuestion = (question) => {
@@ -117,12 +152,14 @@ function FormEditor() {
     newQuestions.splice(index + 1, 0, newQuestion);
     setForm({ ...form, questions: newQuestions });
     setActiveQuestion(newQuestion.id);
+    showToast('Question duplicated');
   };
 
   const addOption = (questionId) => {
     const question = form.questions.find(q => q.id === questionId);
     const newOptions = [...question.options, `Option ${question.options.length + 1}`];
     updateQuestion(questionId, 'options', newOptions);
+    showToast('Option added');
   };
 
   const updateOption = (questionId, optionIndex, value) => {
@@ -136,22 +173,21 @@ function FormEditor() {
     const question = form.questions.find(q => q.id === questionId);
     const newOptions = question.options.filter((_, i) => i !== optionIndex);
     updateQuestion(questionId, 'options', newOptions);
+    showToast('Option removed', 'error');
   };
 
   const handleDragEnd = (result) => {
     if (!result.destination) return;
-    
     const items = Array.from(form.questions);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-    
     setForm({ ...form, questions: items });
   };
 
-  if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Loading...</div>;
+  if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
   return (
-    <>
+    <div>
       {/* Top Bar */}
       <div style={{ 
         display: 'grid', 
@@ -235,8 +271,12 @@ function FormEditor() {
 
       <div className="form-builder-container animate-fade-in" style={{ 
         position: 'relative', 
+        maxWidth: activeTab === 'responses' ? '100%' : undefined,
+        padding: activeTab === 'responses' ? '0 var(--space-6)' : undefined,
         '--font-body': `"${form.settings?.theme?.fontFamily || 'Inter'}", sans-serif`,
-        '--font-heading': `"${form.settings?.theme?.fontFamily || 'Inter'}", sans-serif`
+        '--font-heading': `"${form.settings?.theme?.fontFamily || 'Inter'}", sans-serif`,
+        ...(form.settings?.theme?.color ? { '--primary-500': form.settings.theme.color } : {}),
+        ...(form.settings?.theme?.textColor ? { '--text-primary': form.settings.theme.textColor, color: form.settings.theme.textColor } : {})
       }}>
         {/* Editor Content Area */}
 
@@ -245,12 +285,71 @@ function FormEditor() {
       )}
 
       {activeTab === 'responses' && (
-        <div className="card" style={{ padding: 'var(--space-12) var(--space-6)', textAlign: 'center', borderStyle: 'dashed', borderWidth: '2px' }}>
-          <div style={{ width: '64px', height: '64px', backgroundColor: 'var(--gray-100)', borderRadius: 'var(--radius-full)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-4)' }}>
-            <Icon name="bar-chart" size={32} color="var(--gray-400)" />
-          </div>
-          <h3 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-2)' }}>0 responses</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>Waiting for responses...</p>
+        <div>
+          {loadingResponses ? (
+            <div className="container flex-center" style={{ minHeight: '30vh' }}><Loader /></div>
+          ) : responses.length === 0 ? (
+            <div className="card" style={{ padding: 'var(--space-12) var(--space-6)', textAlign: 'center', borderStyle: 'dashed', borderWidth: '2px' }}>
+              <div style={{ width: '64px', height: '64px', backgroundColor: 'var(--gray-100)', borderRadius: 'var(--radius-full)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-4)' }}>
+                <Icon name="bar-chart" size={32} color="var(--gray-400)" />
+              </div>
+              <h3 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-2)' }}>0 responses</h3>
+              <p style={{ color: 'var(--text-secondary)' }}>Waiting for responses...</p>
+            </div>
+          ) : (
+            <div>
+              <div className="card" style={{ padding: 'var(--space-6)', marginBottom: 'var(--space-6)', borderTop: '8px solid var(--primary-500)' }}>
+                <h3 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{responses.length} {responses.length === 1 ? 'response' : 'responses'}</h3>
+                <p style={{ color: 'var(--text-secondary)' }}>Latest responses to your form.</p>
+              </div>
+
+              <div className="card" style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--gray-50)', borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ padding: 'var(--space-3) var(--space-5)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-color)' }}>Timestamp</th>
+                      {form.settings?.privacy?.collectEmail && (
+                        <th style={{ padding: 'var(--space-3) var(--space-5)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-color)' }}>Email</th>
+                      )}
+                      {form.questions.map(q => (
+                        <th key={q.id} style={{ padding: 'var(--space-3) var(--space-5)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-color)' }}>
+                          {q.title}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {responses.map((response) => (
+                      <tr key={response.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color var(--transition-fast)' }} className="dashboard-table-row">
+                        <td style={{ padding: 'var(--space-4) var(--space-5)', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
+                          {new Date(response.submittedAt).toLocaleString()}
+                        </td>
+                        {form.settings?.privacy?.collectEmail && (
+                          <td style={{ padding: 'var(--space-4) var(--space-5)', fontSize: 'var(--text-sm)', borderRight: '1px solid var(--border-color)' }}>
+                            {response.email || '-'}
+                          </td>
+                        )}
+                        {form.questions.map(q => {
+                          const answer = response.answers?.[q.id];
+                          let displayAnswer = answer;
+                          if (Array.isArray(answer)) {
+                            displayAnswer = answer.join(', ');
+                          } else if (answer === undefined || answer === null || answer === '') {
+                            displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
+                          }
+                          return (
+                            <td key={q.id} style={{ padding: 'var(--space-4) var(--space-5)', fontSize: 'var(--text-sm)', minWidth: '150px', borderRight: '1px solid var(--border-color)' }}>
+                              {displayAnswer}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -319,19 +418,12 @@ function FormEditor() {
                                 placeholder="Question Title"
                               />
                               {activeQuestion === q.id && (
-                                <div style={{ width: '200px' }}>
-                                  <select
-                                    className="input-field"
+                                <div style={{ width: '220px' }}>
+                                  <CustomDropdown
                                     value={q.type}
-                                    onChange={(e) => updateQuestion(q.id, 'type', e.target.value)}
-                                    style={{ cursor: 'pointer' }}
-                                  >
-                                    <option value="short_answer">Short answer</option>
-                                    <option value="paragraph">Paragraph</option>
-                                    <option value="multiple_choice">Multiple choice</option>
-                                    <option value="checkboxes">Checkboxes</option>
-                                    <option value="dropdown">Dropdown</option>
-                                  </select>
+                                    options={QUESTION_TYPE_OPTIONS}
+                                    onChange={(value) => updateQuestion(q.id, 'type', value)}
+                                  />
                                 </div>
                               )}
                             </div>
@@ -356,13 +448,10 @@ function FormEditor() {
                                       </div>
                                       <input
                                         type="text"
-                                        className="input-field"
-                                        style={{ flex: 1, border: 'none', borderBottom: '1px solid transparent', borderRadius: 0, padding: 'var(--space-1) 0' }}
+                                        className="option-input"
                                         value={opt}
                                         onChange={(e) => updateOption(q.id, i, e.target.value)}
                                         placeholder={`Option ${i + 1}`}
-                                        onFocus={(e) => e.target.style.borderBottomColor = 'var(--primary-300)'}
-                                        onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
                                       />
                                       {activeQuestion === q.id && q.options.length > 1 && (
                                         <button className="btn-icon" onClick={() => removeOption(q.id, i)}>
@@ -376,7 +465,7 @@ function FormEditor() {
                                       <div style={{ color: 'var(--gray-300)' }}>
                                         <Icon name={q.type} size={16} />
                                       </div>
-                                      <button className="btn-ghost text-sm" onClick={() => addOption(q.id)} style={{ padding: 'var(--space-1) 0' }}>
+                                      <button className="btn-ghost" onClick={() => addOption(q.id)} style={{ padding: 'var(--space-1) var(--space-2)' }}>
                                         Add option
                                       </button>
                                     </div>
@@ -498,7 +587,7 @@ function FormEditor() {
           onClose={() => setShowThemeSidebar(false)} 
         />
       )}
-    </>
+    </div>
   );
 }
 

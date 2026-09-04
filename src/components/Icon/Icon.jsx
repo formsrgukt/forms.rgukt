@@ -29,6 +29,7 @@ const iconMap = {
   'check': LucideIcons.Check,
   'close': LucideIcons.X,
   'arrow-right': LucideIcons.ArrowRight,
+  'arrow-left': LucideIcons.ArrowLeft,
   'external-link': LucideIcons.ExternalLink,
   'save': LucideIcons.Save,
   'publish': LucideIcons.Send,
@@ -54,6 +55,8 @@ const iconMap = {
   'shuffle': LucideIcons.Shuffle,
   'check-circle': LucideIcons.CheckCircle2,
   'bar-chart': LucideIcons.BarChart3,
+  'loader': LucideIcons.Loader2,
+  'logout': LucideIcons.LogOut,
 
   // Question Types
   'short_answer': LucideIcons.Type,
