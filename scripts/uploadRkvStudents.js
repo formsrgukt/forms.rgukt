@@ -20,7 +20,9 @@ const worksheet = workbook.Sheets[sheetName];
 const data = xlsx.utils.sheet_to_json(worksheet, {header: 1});
 
 const branchMap = {
+  'Computer Science Engineering': 'CSE',
   'Computer Science and Engineering': 'CSE',
+  'Electronics and Communications Engineering': 'ECE',
   'Electronics and Communication Engineering': 'ECE',
   'Civil Engineering': 'CE',
   'Mechanical Engineering': 'ME',
