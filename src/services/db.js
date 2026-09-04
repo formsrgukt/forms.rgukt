@@ -143,3 +143,18 @@ export const getAllResponses = async (forceRefresh = false) => {
     return [];
   }
 };
+
+export const getStudentById = async (studentId) => {
+  if (!studentId) return null;
+  try {
+    const docRef = doc(db, 'students', studentId.trim().toUpperCase());
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting student:", error);
+    return null;
+  }
+};

@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
-import { getForm, saveResponse } from '../services/db';
+import { getForm, saveResponse, getStudentById } from '../services/db';
 import Icon from './Icon/Icon';
 import Loader from './Loader';
+import toast from 'react-hot-toast';
 
 function FormViewer() {
   const { formId } = useParams();
@@ -18,6 +19,7 @@ function FormViewer() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -84,6 +86,53 @@ function FormViewer() {
       const newErrors = { ...errors };
       delete newErrors['email'];
       setErrors(newErrors);
+    }
+  };
+
+  const handleVerifyId = async (qId, value) => {
+    if (!value || !value.trim()) {
+      toast.error("Please enter an ID first");
+      return;
+    }
+    setVerifyingId(qId);
+    const student = await getStudentById(value.trim());
+    setVerifyingId(null);
+
+    if (student) {
+      toast.success(`Student verified: ${student.name}`);
+      const newAnswers = { ...answers };
+      
+      if (form.settings?.privacy?.collectEmail && student.email) {
+        setEmail(student.email);
+        if (errors['email']) {
+          const newErrors = { ...errors };
+          delete newErrors['email'];
+          setErrors(newErrors);
+        }
+      }
+
+      questions.forEach(q => {
+        if (q.id === qId) return; // don't overwrite the ID itself just in case
+        
+        const titleLower = q.title.toLowerCase();
+        if (titleLower.includes('name')) {
+          newAnswers[q.id] = student.name;
+        } else if (titleLower.includes('branch')) {
+          newAnswers[q.id] = student.branch;
+        } else if (titleLower === 'gender' || titleLower === 'sex') {
+          let g = student.gender;
+          if (g === 'M' || g?.toLowerCase() === 'male') g = 'Male';
+          else if (g === 'F' || g?.toLowerCase() === 'female') g = 'Female';
+          newAnswers[q.id] = g;
+        } else if (titleLower.includes('section') || titleLower.includes('class')) {
+          newAnswers[q.id] = student.classSection;
+        } else if (titleLower.includes('email') || titleLower.includes('e-mail')) {
+          if (student.email) newAnswers[q.id] = student.email;
+        }
+      });
+      setAnswers(newAnswers);
+    } else {
+      toast.error("Student ID not found in database.");
     }
   };
 
@@ -423,14 +472,26 @@ function FormViewer() {
               
               <div>
                 {q.type === 'short_answer' && (
-                  <input
-                    type="text"
-                    className={`input-field ${errors[q.id] ? 'error' : ''}`}
-                    style={{ width: '100%', maxWidth: '300px' }}
-                    placeholder="Your answer"
-                    value={answers[q.id] || ''}
-                    onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
-                  />
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <input
+                      type="text"
+                      className={`input-field ${errors[q.id] ? 'error' : ''}`}
+                      style={{ width: '100%', maxWidth: '300px' }}
+                      placeholder="Your answer"
+                      value={answers[q.id] || ''}
+                      onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                    />
+                    {q.title.toLowerCase().includes('id') && (
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary"
+                        onClick={() => handleVerifyId(q.id, answers[q.id])}
+                        disabled={verifyingId === q.id}
+                      >
+                        {verifyingId === q.id ? <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} /> : 'Verify'}
+                      </button>
+                    )}
+                  </div>
                 )}
                 
                 {q.type === 'paragraph' && (

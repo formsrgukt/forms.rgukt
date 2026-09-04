@@ -57,7 +57,7 @@ function Templates() {
       questions: [
         { id: uuidv4(), type: 'short_answer', title: 'Id number', required: true, options: [] },
         { id: uuidv4(), type: 'short_answer', title: 'Full Name', required: true, options: [] },
-        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['PUC', 'CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM'] },
+        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['PUC', 'CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM', 'AIML', 'EEE'] },
         { id: uuidv4(), type: 'short_answer', title: 'Year of Study', required: true, options: [] }
       ],
       settings: {
@@ -106,7 +106,7 @@ function Templates() {
         { id: uuidv4(), type: 'date', title: 'Date of Birth', required: true, options: [] },
         { id: uuidv4(), type: 'dropdown', title: 'Campus', required: true, options: ['Basar', 'Nuzvid', 'RK Valley', 'Ongole'] },
         { id: uuidv4(), type: 'dropdown', title: 'College/Department', required: true, options: ['Engineering', 'Pre-University Course'] },
-        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM'] },
+        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM', 'AIML', 'EEE'] },
         { id: uuidv4(), type: 'dropdown', title: 'Year', required: true, options: ['E1', 'E2', 'E3', 'E4', 'PUC 1', 'PUC 2'] },
         { id: uuidv4(), type: 'paragraph', title: 'Address', required: true, options: [] },
         { id: uuidv4(), type: 'file_upload', title: 'Profile Photo', required: true, options: [] }
@@ -204,7 +204,7 @@ function Templates() {
         { id: uuidv4(), type: 'short_answer', title: 'Email', required: true, options: [] },
         { id: uuidv4(), type: 'short_answer', title: 'Mobile Number', required: true, options: [] },
         { id: uuidv4(), type: 'dropdown', title: 'College/Department', required: true, options: ['Engineering', 'Pre-University Course', 'Other'] },
-        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM'] },
+        { id: uuidv4(), type: 'dropdown', title: 'Branch', required: true, options: ['CSE', 'ECE', 'CE', 'ME', 'MME', 'CHEM', 'AIML', 'EEE'] },
         { id: uuidv4(), type: 'dropdown', title: 'Year', required: true, options: ['E1', 'E2', 'E3', 'E4', 'PUC 1', 'PUC 2'] },
         { id: uuidv4(), type: 'dropdown', title: 'Event Name', required: true, options: ['Technical Symposium', 'Cultural Fest', 'Sports Meet', 'Workshop'] },
         { id: uuidv4(), type: 'multiple_choice', title: 'Participation Type', required: true, options: ['Individual', 'Team'] },
