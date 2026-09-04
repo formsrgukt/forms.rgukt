@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useUndo } from '../hooks/useUndo';
@@ -10,7 +11,7 @@ import ThemeSidebar from './ThemeSidebar';
 import CustomDropdown from './CustomDropdown';
 import Loader from './Loader';
 import { loadGoogleFont } from '../utils/fontLoader';
-import { getForm, saveForm, getResponses } from '../services/db';
+import { getForm, saveForm, getResponses, deleteResponse } from '../services/db';
 import { useToast } from '../contexts/ToastContext';
 
 const QUESTION_TYPE_OPTIONS = [
@@ -25,15 +26,21 @@ function FormEditor() {
   const { formId } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = searchParams.get('tab') || 'questions';
   
-  const [activeTab, setActiveTab] = useState('questions');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [responses, setResponses] = useState([]);
+  const [responseSearchTerm, setResponseSearchTerm] = useState('');
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [saveStatus, setSaveStatus] = useState('saved');
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showThemeSidebar, setShowThemeSidebar] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [responseToDelete, setResponseToDelete] = useState(null);
+  const [deletingResponseId, setDeletingResponseId] = useState(null);
   const initialLoadRef = useRef(false);
 
   const [form, setForm, { undo, redo, canUndo, canRedo }] = useUndo(null);
@@ -70,16 +77,16 @@ function FormEditor() {
   }, [form, formId]);
 
   useEffect(() => {
-    if (activeTab === 'responses' && formId) {
+    if (formId) {
       const fetchFormResponses = async () => {
-        setLoadingResponses(true);
+        if (activeTab === 'responses') setLoadingResponses(true);
         const fetchedResponses = await getResponses(formId);
         setResponses(fetchedResponses);
-        setLoadingResponses(false);
+        if (activeTab === 'responses') setLoadingResponses(false);
       };
       fetchFormResponses();
     }
-  }, [activeTab, formId]);
+  }, [formId, activeTab]);
 
   useEffect(() => {
     if (form?.settings?.theme?.fontFamily) {
@@ -184,20 +191,63 @@ function FormEditor() {
     setForm({ ...form, questions: items });
   };
 
+  const filteredResponses = responses.filter(r => {
+    if (!responseSearchTerm) return true;
+    const term = responseSearchTerm.toLowerCase();
+    
+    if (new Date(r.submittedAt).toLocaleString().toLowerCase().includes(term)) return true;
+    if (r.email && r.email.toLowerCase().includes(term)) return true;
+    
+    if (r.answers) {
+      for (const key in r.answers) {
+        const answer = r.answers[key];
+        if (Array.isArray(answer)) {
+          if (answer.join(', ').toLowerCase().includes(term)) return true;
+        } else if (typeof answer === 'string' && answer.toLowerCase().includes(term)) {
+          return true;
+        } else if (typeof answer === 'number' && String(answer).toLowerCase().includes(term)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  });
+
+  const handleDeleteResponse = async () => {
+    if (!responseToDelete) return;
+    const responseId = responseToDelete;
+    setDeletingResponseId(responseId);
+    
+    try {
+      await deleteResponse(responseId);
+      setResponses(responses.filter(r => r.id !== responseId));
+      showToast('Response deleted successfully', 'success');
+      setResponseToDelete(null);
+    } catch (error) {
+      console.error("Error deleting response:", error);
+      showToast('Error deleting response', 'error');
+    } finally {
+      setDeletingResponseId(null);
+    }
+  };
+
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
   return (
     <div>
       {/* Top Bar */}
       <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr auto 1fr', 
+        display: 'flex', 
+        flexWrap: 'wrap',
+        gap: 'var(--space-4)',
+        justifyContent: 'space-between', 
         alignItems: 'center',
         position: 'sticky', 
         top: '-40px', /* Offset for app-content padding if needed, or 0 */
         zIndex: 100, 
         backgroundColor: 'var(--bg-app)', 
-        padding: 'var(--space-4) 0',
+        padding: 'var(--space-4)',
         marginBottom: 'var(--space-8)',
         borderBottom: '1px solid var(--border-color)',
         width: '100%'
@@ -239,7 +289,22 @@ function FormEditor() {
             }}
             onClick={() => setActiveTab('responses')}
           >
-            Responses
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              Responses
+              {responses.length > 0 && (
+                <span style={{ 
+                  backgroundColor: activeTab === 'responses' ? 'var(--primary-100)' : 'var(--gray-200)', 
+                  color: activeTab === 'responses' ? 'var(--primary-700)' : 'var(--text-secondary)',
+                  padding: '2px 8px', 
+                  borderRadius: '10px', 
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'bold',
+                  transition: 'all var(--transition-fast)'
+                }}>
+                  {responses.length}
+                </span>
+              )}
+            </div>
           </button>
           <button 
             style={{ 
@@ -299,8 +364,25 @@ function FormEditor() {
           ) : (
             <div>
               <div className="card" style={{ padding: 'var(--space-6)', marginBottom: 'var(--space-6)', borderTop: '8px solid var(--primary-500)' }}>
-                <h3 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{responses.length} {responses.length === 1 ? 'response' : 'responses'}</h3>
-                <p style={{ color: 'var(--text-secondary)' }}>Latest responses to your form.</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+                  <div>
+                    <h3 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{responses.length} {responses.length === 1 ? 'response' : 'responses'}</h3>
+                    <p style={{ color: 'var(--text-secondary)' }}>Latest responses to your form.</p>
+                  </div>
+                  <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
+                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }}>
+                      <Icon name="search" size={18} />
+                    </div>
+                    <input 
+                      type="text" 
+                      className="input-field" 
+                      style={{ paddingLeft: '38px', width: '100%' }}
+                      placeholder="Search across all responses..." 
+                      value={responseSearchTerm}
+                      onChange={(e) => setResponseSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="card" style={{ overflowX: 'auto' }}>
@@ -316,12 +398,22 @@ function FormEditor() {
                           {q.title}
                         </th>
                       ))}
+                      <th style={{ padding: 'var(--space-3) var(--space-5)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {responses.map((response) => (
-                      <tr key={response.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color var(--transition-fast)' }} className="dashboard-table-row">
-                        <td style={{ padding: 'var(--space-4) var(--space-5)', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
+                    {filteredResponses.length === 0 ? (
+                      <tr>
+                        <td colSpan={form.questions.length + (form.settings?.privacy?.collectEmail ? 3 : 2)} style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          No matching responses found.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredResponses.map((response) => (
+                        <tr key={response.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color var(--transition-fast)' }} className="dashboard-table-row">
+                          <td style={{ padding: 'var(--space-4) var(--space-5)', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
                           {new Date(response.submittedAt).toLocaleString()}
                         </td>
                         {form.settings?.privacy?.collectEmail && (
@@ -343,8 +435,24 @@ function FormEditor() {
                             </td>
                           );
                         })}
+                        <td style={{ padding: 'var(--space-4) var(--space-5)', textAlign: 'center' }}>
+                          <button 
+                            className="btn-icon" 
+                            style={{ color: deletingResponseId === response.id ? 'var(--gray-400)' : 'var(--error-500)', opacity: deletingResponseId === response.id ? 0.7 : 1, cursor: deletingResponseId === response.id ? 'not-allowed' : 'pointer' }}
+                            onClick={() => !deletingResponseId && setResponseToDelete(response.id)}
+                            title="Delete Response"
+                            disabled={deletingResponseId === response.id}
+                          >
+                            {deletingResponseId === response.id ? (
+                              <Icon name="loader" size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                            ) : (
+                              <Icon name="delete" size={18} />
+                            )}
+                          </button>
+                        </td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                   </tbody>
                 </table>
               </div>
@@ -587,6 +695,57 @@ function FormEditor() {
           onClose={() => setShowThemeSidebar(false)} 
         />
       )}
+
+      {/* Delete Response Confirmation Modal */}
+      {responseToDelete && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(2px)' }}>
+          <div className="card animate-fade-in" style={{ padding: 'var(--space-6)', maxWidth: '400px', width: '90%', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', color: 'var(--error-600)' }}>
+              <Icon name="delete" size={24} />
+              <h3 style={{ fontSize: 'var(--text-lg)', margin: 0 }}>Delete Response</h3>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+              Are you sure you want to delete this response? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+              <button 
+                className="btn" 
+                style={{ backgroundColor: 'var(--gray-100)', color: 'var(--text-primary)', border: 'none', opacity: deletingResponseId ? 0.7 : 1 }} 
+                onClick={() => setResponseToDelete(null)}
+                disabled={deletingResponseId !== null}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn" 
+                style={{ backgroundColor: 'var(--error-600)', color: 'white', border: 'none', opacity: deletingResponseId ? 0.7 : 1, minWidth: '85px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }} 
+                onClick={handleDeleteResponse}
+                disabled={deletingResponseId !== null}
+              >
+                {deletingResponseId ? (
+                  <>
+                    <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <style>{`
+        .dashboard-table-row:hover {
+          background-color: var(--gray-50);
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

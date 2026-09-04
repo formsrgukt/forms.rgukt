@@ -4,11 +4,22 @@ import { db } from '../firebase';
 const FORMS_COLLECTION = 'forms';
 const RESPONSES_COLLECTION = 'responses';
 
-export const getForms = async () => {
+// In-memory cache for lightning-fast loads
+let formsCache = null;
+let responsesCache = null;
+
+export const clearCache = () => {
+  formsCache = null;
+  responsesCache = null;
+};
+
+export const getForms = async (forceRefresh = false) => {
+  if (formsCache && !forceRefresh) return formsCache;
   try {
     const q = query(collection(db, FORMS_COLLECTION), orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data());
+    formsCache = querySnapshot.docs.map(doc => doc.data());
+    return formsCache;
   } catch (error) {
     console.error("Error getting forms: ", error);
     return [];
@@ -38,6 +49,17 @@ export const saveForm = async (form) => {
       updatedAt: form.updatedAt || Date.now(), // Fallback to timestamp if not provided by app
     };
     await setDoc(doc(db, FORMS_COLLECTION, form.id), formToSave);
+    
+    // Update cache
+    if (formsCache) {
+      const index = formsCache.findIndex(f => f.id === form.id);
+      if (index >= 0) {
+        formsCache[index] = formToSave;
+      } else {
+        formsCache.unshift(formToSave);
+      }
+    }
+    
     return formToSave;
   } catch (error) {
     console.error("Error saving form: ", error);
@@ -48,6 +70,12 @@ export const saveForm = async (form) => {
 export const deleteForm = async (id) => {
   try {
     await deleteDoc(doc(db, FORMS_COLLECTION, id));
+    
+    // Update cache
+    if (formsCache) {
+      formsCache = formsCache.filter(f => f.id !== id);
+    }
+    
     return true;
   } catch (error) {
     console.error("Error deleting form: ", error);
@@ -64,6 +92,12 @@ export const saveResponse = async (formId, response) => {
       submittedAt: Date.now(),
     };
     const docRef = await addDoc(collection(db, RESPONSES_COLLECTION), responseToSave);
+    const newResponse = { id: docRef.id, ...responseToSave };
+    
+    if (responsesCache) {
+      responsesCache.unshift(newResponse);
+    }
+    
     return docRef.id;
   } catch (error) {
     console.error("Error saving response: ", error);
@@ -71,15 +105,41 @@ export const saveResponse = async (formId, response) => {
   }
 };
 
-export const getResponses = async (formId) => {
+export const deleteResponse = async (id) => {
   try {
-    const q = query(collection(db, RESPONSES_COLLECTION));
-    const querySnapshot = await getDocs(q);
-    const allResponses = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const filteredResponses = allResponses.filter(r => r.formId === formId);
+    await deleteDoc(doc(db, RESPONSES_COLLECTION, id));
+    
+    if (responsesCache) {
+      responsesCache = responsesCache.filter(r => r.id !== id);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting response: ", error);
+    throw error;
+  }
+};
+
+export const getResponses = async (formId, forceRefresh = false) => {
+  try {
+    const all = await getAllResponses(forceRefresh);
+    const filteredResponses = all.filter(r => r.formId === formId);
     return filteredResponses.sort((a, b) => b.submittedAt - a.submittedAt);
   } catch (error) {
     console.error("Error getting responses: ", error);
+    return [];
+  }
+};
+
+export const getAllResponses = async (forceRefresh = false) => {
+  if (responsesCache && !forceRefresh) return responsesCache;
+  try {
+    const q = query(collection(db, RESPONSES_COLLECTION), orderBy('submittedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    responsesCache = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return responsesCache;
+  } catch (error) {
+    console.error("Error getting all responses: ", error);
     return [];
   }
 };

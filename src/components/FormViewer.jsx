@@ -16,6 +16,8 @@ function FormViewer() {
   const [errors, setErrors] = useState({});
   const [questions, setQuestions] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -121,6 +123,16 @@ function FormViewer() {
       return;
     }
 
+    setShowConfirmation(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleFinalSubmit = async () => {
+    if (!isConfirmed) {
+      alert("Please confirm that all data provided is correct.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const responseData = {
@@ -129,6 +141,7 @@ function FormViewer() {
       };
       await saveResponse(formId, responseData);
       setSubmitted(true);
+      setShowConfirmation(false);
     } catch (error) {
       console.error("Error submitting form:", error);
       alert("There was an error submitting your form. Please try again.");
@@ -153,7 +166,7 @@ function FormViewer() {
 
   if (!isAccepting) {
     return (
-      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, marginTop: 'var(--space-10)', maxWidth: '600px', margin: '0 auto' }}>
+      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-10) var(--space-4) var(--space-10) var(--space-4)', maxWidth: '600px', margin: '0 auto' }}>
         <div className="card" style={{ padding: 'var(--space-12) var(--space-6)', borderTop: '8px solid var(--error-500)' }}>
           <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-4)' }}>{form.title}</h2>
           <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
@@ -164,45 +177,166 @@ function FormViewer() {
     );
   }
 
-  if (submitted) {
+  if (isSubmitting || submitted) {
     return (
-      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, marginTop: 'var(--space-10)', maxWidth: '600px', margin: '0 auto' }}>
-        <div className="card" style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-6)', borderTop: '8px solid var(--primary-500)' }}>
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            style={{ width: '80px', height: '80px', margin: '0 auto var(--space-6)' }}
-          >
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="50" cy="50" r="50" fill="var(--success-100)"/>
-              <motion.path 
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
-                d="M30 50L45 65L70 35" 
-                stroke="var(--success-500)" 
-                strokeWidth="8" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              />
-            </svg>
-          </motion.div>
-          <h2 style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>{form.title}</h2>
+      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-10) var(--space-4) var(--space-10) var(--space-4)', maxWidth: '600px', margin: '0 auto' }}>
+        <div className="card" style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-6)', borderTop: `8px solid ${submitted ? 'var(--primary-500)' : 'var(--primary-300)'}`, transition: 'border-color var(--transition-slow)' }}>
+          
+          <div style={{ height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+            {isSubmitting ? (
+              <motion.div
+                key="loader"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{ position: 'relative', width: '80px', height: '80px' }}
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                  style={{ 
+                    position: 'absolute', inset: 0,
+                    borderRadius: '50%', 
+                    border: '6px solid var(--primary-100)', 
+                    borderTopColor: 'var(--primary-500)'
+                  }}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="success"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                style={{ width: '80px', height: '80px' }}
+              >
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="50" fill="#d1fae5"/>
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+                    d="M30 50L45 65L70 35" 
+                    stroke="#10b981" 
+                    strokeWidth="8" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </motion.div>
+            )}
+          </div>
+
+          <h2 style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>
+            {isSubmitting ? 'Submitting...' : form.title}
+          </h2>
           <p style={{ fontSize: 'var(--text-lg)', color: 'var(--text-secondary)' }}>
-            {form.settings?.presentation?.confirmationMessage || "Your response has been recorded."}
+            {isSubmitting ? 'Please wait while we record your response.' : (form.settings?.presentation?.confirmationMessage || "Your response has been recorded.")}
           </p>
-          {!form.settings?.responses?.limitOnePerUser && (
-            <button className="btn btn-secondary" onClick={() => {
-              setSubmitted(false);
-              setEmail('');
-              const initialAnswers = {};
-              questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
-              setAnswers(initialAnswers);
-            }} style={{ marginTop: 'var(--space-8)' }}>
+
+          {submitted && !form.settings?.responses?.limitOnePerUser && (
+            <motion.button 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="btn btn-secondary" 
+              onClick={() => {
+                setSubmitted(false);
+                setEmail('');
+                const initialAnswers = {};
+                questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
+                setAnswers(initialAnswers);
+                setIsConfirmed(false);
+              }} 
+              style={{ marginTop: 'var(--space-8)' }}
+            >
               Submit another response
-            </button>
+            </motion.button>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (showConfirmation) {
+    return (
+      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4) var(--space-4) var(--space-16) var(--space-4)', maxWidth: '768px', margin: '0 auto' }}>
+        <div className="card" style={{ borderTop: '8px solid var(--primary-500)', marginBottom: 'var(--space-4)' }}>
+          <div className="card-body">
+            <h1 style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>Review your responses</h1>
+            <p style={{ color: 'var(--text-secondary)' }}>Please verify the information below before submitting.</p>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {form.settings?.privacy?.collectEmail && (
+              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>Email</div>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{email}</div>
+              </div>
+            )}
+            {questions.map(q => {
+              const answer = answers[q.id];
+              let displayAnswer = answer;
+              if (Array.isArray(answer)) {
+                displayAnswer = answer.join(', ');
+              } else if (answer === undefined || answer === null || answer === '') {
+                displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
+              }
+              
+              return (
+                <div key={q.id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>{q.title}</div>
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{displayAnswer}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div 
+          className="card" 
+          style={{ 
+            marginBottom: 'var(--space-6)', 
+            backgroundColor: isConfirmed ? 'var(--success-50)' : 'var(--gray-50)',
+            border: isConfirmed ? '1px solid var(--success-200)' : '1px dashed var(--gray-300)',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={isConfirmed}
+                onChange={(e) => setIsConfirmed(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--success-600)', cursor: 'pointer', flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', color: isConfirmed ? 'var(--success-700)' : 'var(--text-primary)' }}>
+                  Confirm Submission
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: isConfirmed ? 'var(--success-600)' : 'var(--text-secondary)' }}>
+                  I confirm that the data provided above is correct.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex-between">
+          <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmation(false)}>
+            Edit Responses
+          </button>
+          <button 
+            type="button" 
+            className="btn btn-primary" 
+            onClick={handleFinalSubmit} 
+            disabled={!isConfirmed || isSubmitting} 
+            style={{ opacity: (!isConfirmed || isSubmitting) ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+          >
+            {isSubmitting && <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+            {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
+          </button>
         </div>
       </div>
     );
@@ -218,7 +352,7 @@ function FormViewer() {
   }
 
   return (
-    <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, paddingTop: 'var(--space-8)', paddingBottom: 'var(--space-16)', maxWidth: '768px', margin: '0 auto' }}>
+    <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4) var(--space-4) var(--space-16) var(--space-4)', maxWidth: '768px', margin: '0 auto' }}>
       
       {form.settings?.presentation?.showProgressBar && (
         <div style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: 'var(--bg-app)', padding: 'var(--space-4) 0', marginBottom: 'var(--space-2)' }}>

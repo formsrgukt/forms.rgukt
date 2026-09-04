@@ -161,6 +161,9 @@ function MyForms() {
                       <button className="btn-icon" onClick={() => navigate(`/view/${form.id}`)} title="View">
                         <Icon name="preview" size={18} />
                       </button>
+                      <button className="btn-icon" onClick={() => navigate(`/edit/${form.id}?tab=responses`)} title="Responses">
+                        <Icon name="bar-chart" size={18} />
+                      </button>
                       <button className="btn-icon" onClick={() => navigate(`/edit/${form.id}`)} title="Edit">
                         <Icon name="edit" size={18} />
                       </button>
