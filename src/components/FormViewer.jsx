@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
 import { getForm, saveResponse, getStudentById, getResponses } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import Icon from './Icon/Icon';
 import Loader from './Loader';
@@ -26,9 +26,10 @@ function FormViewer() {
   const [showCoverScreen, setShowCoverScreen] = useState(false);
   const { currentUser } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
 
   useEffect(() => {
-    if (currentUser && form?.settings?.privacy?.collectEmail && !email) {
+    if (currentUser && form?.settings?.privacy?.collectEmail) {
       setEmail(currentUser.email);
     }
   }, [currentUser, form]);
@@ -245,8 +246,28 @@ function FormViewer() {
     }
   };
 
+  const handleSwitchAccount = async () => {
+    try {
+      setIsSwitchingAccount(true);
+      googleProvider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      await signOut(auth);
+      await signInWithPopup(auth, googleProvider);
+      toast.success('Account switched successfully.');
+    } catch (error) {
+      if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+        console.error("Error switching account:", error);
+        toast.error("Failed to switch account.");
+      }
+    } finally {
+      setIsSwitchingAccount(false);
+    }
+  };
+
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
+  if (isSwitchingAccount) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
   if (!currentUser) {
     return (
@@ -612,6 +633,18 @@ function FormViewer() {
           </div>
         </div>
       </div>
+
+      {currentUser && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: 'var(--text-sm)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+             <span style={{ color: 'var(--text-secondary)' }}>Signed in as <strong style={{ color: 'var(--text-primary)' }}>{currentUser.email}</strong></span>
+          </div>
+          <button type="button" onClick={handleSwitchAccount} className="btn btn-secondary" style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)' }}>
+            Switch account
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         
