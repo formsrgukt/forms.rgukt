@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
-import { getForm, saveResponse, getStudentById } from '../services/db';
+import { getForm, saveResponse, getStudentById, getResponses } from '../services/db';
+import { useAuth } from '../contexts/AuthContext';
+import { signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../firebase';
 import Icon from './Icon/Icon';
 import Loader from './Loader';
 import toast from 'react-hot-toast';
@@ -20,6 +23,15 @@ function FormViewer() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [verifyingId, setVerifyingId] = useState(null);
+  const [showCoverScreen, setShowCoverScreen] = useState(false);
+  const { currentUser } = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && form?.settings?.privacy?.collectEmail && !email) {
+      setEmail(currentUser.email);
+    }
+  }, [currentUser, form]);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -30,6 +42,9 @@ function FormViewer() {
         if (currentForm.settings?.theme?.fontFamily) {
           loadGoogleFont(currentForm.settings.theme.fontFamily);
         }
+        if (currentForm.settings?.coverScreen?.fontFamily) {
+          loadGoogleFont(currentForm.settings.coverScreen.fontFamily);
+        }
 
         if (!currentForm.settings) {
           currentForm.settings = {
@@ -39,7 +54,25 @@ function FormViewer() {
             theme: { fontFamily: 'Inter' }
           };
         }
+        
+        if (currentForm.settings?.responses?.limitResponses && currentForm.settings?.responses?.maxResponses) {
+          const max = parseInt(currentForm.settings.responses.maxResponses, 10);
+          if (!isNaN(max) && max > 0) {
+            const responses = await getResponses(formId);
+            if (responses.length >= max) {
+              currentForm.settings.responses.acceptingResponses = false;
+              if (!currentForm.settings.responses.closedMessage || currentForm.settings.responses.closedMessage === "This form is no longer accepting responses.") {
+                currentForm.settings.responses.closedMessage = "This form has reached the maximum number of allowed responses.";
+              }
+            }
+          }
+        }
+        
         setForm(currentForm);
+        
+        if (currentForm.settings?.coverScreen?.enabled) {
+          setShowCoverScreen(true);
+        }
         
         let initialQuestions = [...currentForm.questions];
         if (currentForm.settings?.presentation?.shuffleQuestions) {
@@ -199,8 +232,61 @@ function FormViewer() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    if (signingIn) return;
+    setSigningIn(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Google login failed:", error);
+      toast.error('Failed to sign in. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
+
+  if (!currentUser) {
+    return (
+      <div className="form-viewer-container animate-fade-in" style={{ padding: 'var(--space-4)', maxWidth: '600px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <div className="card" style={{ padding: 'var(--space-12) var(--space-8)', borderTop: '8px solid var(--primary-500)', textAlign: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-6)' }}>
+             <img src="/logo.png" alt="RGUKT FORMS Logo" style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
+          </div>
+          <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-4)', color: 'var(--text-primary)' }}>{form.title}</h2>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-8)' }}>
+            Sign in with your Google account to view and respond to this form.
+          </p>
+          
+          <button 
+            className="btn btn-secondary" 
+            onClick={handleGoogleLogin}
+            disabled={signingIn}
+            style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)', margin: '0 auto' }}
+          >
+            {signingIn ? (
+              <>
+                <Icon name="loader" size={20} style={{ animation: 'spin 1s linear infinite' }} />
+                Signing in...
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Sign in with Google
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentFont = form.settings?.theme?.fontFamily || 'Inter';
   const containerStyle = {
@@ -211,17 +297,119 @@ function FormViewer() {
     ...(form.settings?.theme?.textColor ? { '--text-primary': form.settings.theme.textColor, color: form.settings.theme.textColor } : {})
   };
 
-  const isAccepting = form.settings?.responses?.acceptingResponses !== false;
+  let isAccepting = form.settings?.responses?.acceptingResponses !== false;
+  if (isAccepting && form.settings?.responses?.limitResponses && form.settings?.responses?.expirationDate) {
+    const expirationDate = new Date(form.settings.responses.expirationDate);
+    if (new Date() > expirationDate) {
+      isAccepting = false;
+    }
+  }
 
   if (!isAccepting) {
     return (
-      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-10) var(--space-4) var(--space-10) var(--space-4)', maxWidth: '600px', margin: '0 auto' }}>
-        <div className="card" style={{ padding: 'var(--space-12) var(--space-6)', borderTop: '8px solid var(--error-500)' }}>
-          <h2 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-4)' }}>{form.title}</h2>
-          <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
+      <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4)', maxWidth: '600px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <div className="card" style={{ padding: 'var(--space-12) var(--space-8)', borderTop: '8px solid var(--error-500)', textAlign: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-6)' }}>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20 }}
+              style={{ width: '80px', height: '80px' }}
+            >
+              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="50" fill="var(--error-100)"/>
+                <motion.path 
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
+                  d="M35 35L65 65M65 35L35 65" 
+                  stroke="var(--error-500)" 
+                  strokeWidth="8" 
+                  strokeLinecap="round" 
+                />
+              </svg>
+            </motion.div>
+          </div>
+          <h2 style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-4)', color: 'var(--text-primary)' }}>{form.title}</h2>
+          <p style={{ fontSize: 'var(--text-lg)', color: 'var(--text-secondary)' }}>
             {form.settings?.responses?.closedMessage || "This form is no longer accepting responses."}
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (showCoverScreen) {
+    const coverSettings = form.settings?.coverScreen || {};
+    const animationType = coverSettings.animation || 'fade-up';
+    const bgColor = coverSettings.backgroundColor || '#ffffff';
+    const txtColor = coverSettings.textColor || '#1f2937';
+    const btnColor = coverSettings.buttonColor || '#3b82f6';
+    const fontFam = coverSettings.fontFamily || 'Inter';
+
+    let animProps = {
+      initial: { opacity: 0, y: 30, scale: 0.95 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      transition: { duration: 0.6, ease: "easeOut" }
+    };
+    if (animationType === 'zoom-in') {
+      animProps = {
+        initial: { opacity: 0, scale: 0.8 },
+        animate: { opacity: 1, scale: 1 },
+        transition: { duration: 0.5, ease: "easeOut" }
+      };
+    } else if (animationType === 'bounce') {
+      animProps = {
+        initial: { opacity: 0, y: -50 },
+        animate: { opacity: 1, y: 0 },
+        transition: { type: "spring", stiffness: 300, damping: 15 }
+      };
+    }
+
+    return (
+      <div className="form-viewer-container animate-fade-in" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)', backgroundColor: bgColor, fontFamily: `"${fontFam}", sans-serif` }}>
+        <motion.div 
+          className="card" 
+          {...animProps}
+          style={{ padding: 'var(--space-12) var(--space-8)', textAlign: 'center', maxWidth: '600px', width: '100%', backgroundColor: 'transparent', boxShadow: 'none', border: 'none' }}
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
+            style={{ width: '80px', height: '80px', margin: '0 auto var(--space-6)', backgroundColor: `${btnColor}20`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: btnColor }}
+          >
+            <Icon name={coverSettings.icon || 'form'} size={40} />
+          </motion.div>
+
+          <motion.h1 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.5 }}
+            style={{ fontSize: 'var(--text-4xl)', marginBottom: 'var(--space-4)', color: txtColor, fontWeight: 'bold' }}
+          >
+            {coverSettings.title || form.title}
+          </motion.h1>
+          
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.5 }}
+            style={{ fontSize: 'var(--text-lg)', color: txtColor, opacity: 0.8, marginBottom: 'var(--space-10)', lineHeight: '1.6' }}
+          >
+            {coverSettings.description || form.description}
+          </motion.p>
+          
+          <motion.button 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.4 }}
+            onClick={() => setShowCoverScreen(false)}
+            style={{ padding: 'var(--space-4) var(--space-10)', fontSize: 'var(--text-xl)', borderRadius: 'var(--radius-full)', backgroundColor: btnColor, color: '#ffffff', border: 'none', cursor: 'pointer', fontWeight: '600', boxShadow: `0 4px 14px 0 ${btnColor}40` }}
+          >
+            {coverSettings.buttonText || 'Start'}
+          </motion.button>
+        </motion.div>
       </div>
     );
   }

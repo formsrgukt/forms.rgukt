@@ -4,9 +4,10 @@ import Icon from './Icon/Icon';
 function FormSettings({ form, updateFormMeta }) {
   // Ensure settings object exists to avoid errors on older forms
   const settings = form.settings || {
-    responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false },
+    responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false, limitResponses: false, expirationDate: "", maxResponses: "" },
     privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
-    presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" }
+    presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
+    coverScreen: { enabled: false, title: "", description: "", buttonText: "Start", icon: "form", animation: "fade-up", backgroundColor: "#ffffff", textColor: "#1f2937", buttonColor: "#3b82f6", fontFamily: "Inter" }
   };
 
   const updateSetting = (category, key, value) => {
@@ -87,6 +88,38 @@ function FormSettings({ form, updateFormMeta }) {
             checked={settings.responses.limitOnePerUser} 
             onChange={(v) => updateSetting('responses', 'limitOnePerUser', v)} 
           />
+          <SettingToggle 
+            label="Set response limits" 
+            description="Automatically close the form based on a date/time or maximum number of responses."
+            checked={settings.responses.limitResponses || false} 
+            onChange={(v) => updateSetting('responses', 'limitResponses', v)} 
+          />
+          {settings.responses.limitResponses && (
+            <div style={{ marginLeft: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', border: '1px solid var(--border-color)', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Maximum number of responses</p>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Form will automatically close after this many responses. Leave blank for no limit.</p>
+                <input 
+                  type="number"
+                  min="1"
+                  className="input-field" 
+                  value={settings.responses.maxResponses || ""}
+                  onChange={(e) => updateSetting('responses', 'maxResponses', e.target.value)}
+                  onWheel={(e) => e.target.blur()}
+                />
+              </div>
+              <div style={{ paddingTop: 'var(--space-2)', borderTop: '1px solid var(--border-color)' }}>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Form expiration date and time</p>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Form will automatically close after this time. Leave blank for no expiration.</p>
+                <input 
+                  type="datetime-local"
+                  className="input-field" 
+                  value={settings.responses.expirationDate || ""}
+                  onChange={(e) => updateSetting('responses', 'expirationDate', e.target.value)}
+                />
+              </div>
+            </div>
+          )}
           <SettingToggle 
             label="Allow response editing" 
             description="Respondents can change their answers after submitting."

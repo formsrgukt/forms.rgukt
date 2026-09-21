@@ -10,6 +10,7 @@ import AutosaveIndicator from './AutosaveIndicator/AutosaveIndicator';
 import ThemeSidebar from './ThemeSidebar';
 import CustomDropdown from './CustomDropdown';
 import Loader from './Loader';
+import CoverScreenModal from './CoverScreenModal';
 import { loadGoogleFont } from '../utils/fontLoader';
 import { getForm, saveForm, getResponses, deleteResponse } from '../services/db';
 import { useToast } from '../contexts/ToastContext';
@@ -20,6 +21,20 @@ const QUESTION_TYPE_OPTIONS = [
   { value: 'multiple_choice', label: 'Multiple choice', icon: 'multiple_choice' },
   { value: 'checkboxes', label: 'Checkboxes', icon: 'checkboxes' },
   { value: 'dropdown', label: 'Dropdown', icon: 'dropdown' }
+];
+
+const COVER_ICONS = [
+  { value: 'form', label: 'Document' },
+  { value: 'star', label: 'Star' },
+  { value: 'check-circle', label: 'Check' },
+  { value: 'activity', label: 'Activity' },
+  { value: 'presentation', label: 'Presentation' }
+];
+
+const COVER_ANIMATIONS = [
+  { value: 'fade-up', label: 'Fade Up' },
+  { value: 'zoom-in', label: 'Zoom In' },
+  { value: 'bounce', label: 'Bounce' }
 ];
 
 function FormEditor() {
@@ -41,7 +56,11 @@ function FormEditor() {
   const [copied, setCopied] = useState(false);
   const [responseToDelete, setResponseToDelete] = useState(null);
   const [deletingResponseId, setDeletingResponseId] = useState(null);
+  const [showCoverModal, setShowCoverModal] = useState(false);
+  const [hasChangesToPublish, setHasChangesToPublish] = useState(false);
+  const [publishStatus, setPublishStatus] = useState('idle');
   const initialLoadRef = useRef(false);
+  const isPublishingRef = useRef(false);
 
   const [form, setForm, { undo, redo, canUndo, canRedo }] = useUndo(null);
 
@@ -51,6 +70,8 @@ function FormEditor() {
         const currentForm = await getForm(formId);
         if (currentForm) {
           setForm(currentForm);
+          const hasChanges = !currentForm.publishedAt || (currentForm.updatedAt && currentForm.publishedAt && currentForm.updatedAt > currentForm.publishedAt);
+          setHasChangesToPublish(hasChanges);
         } else {
           navigate('/');
         }
@@ -62,6 +83,9 @@ function FormEditor() {
 
   useEffect(() => {
     if (form && initialLoadRef.current) {
+      if (!isPublishingRef.current) {
+        setHasChangesToPublish(true);
+      }
       setSaveStatus('saving');
       const timer = setTimeout(async () => {
         try {
@@ -114,6 +138,48 @@ function FormEditor() {
 
   const updateFormMeta = (field, value) => {
     setForm({ ...form, [field]: value });
+  };
+
+  const handlePublishClick = async () => {
+    if (!form.publishedAt || hasChangesToPublish) {
+      const isInitialPublish = !form.publishedAt;
+      isPublishingRef.current = true;
+      setPublishStatus('publishing');
+      
+      const now = Date.now();
+      const updatedForm = { ...form, publishedAt: now, updatedAt: now };
+      
+      try {
+        await saveForm(updatedForm);
+        setForm(updatedForm);
+        setHasChangesToPublish(false);
+        setPublishStatus('idle');
+        setTimeout(() => {
+          isPublishingRef.current = false;
+        }, 50);
+        showToast(isInitialPublish ? 'Form Published Successfully!' : 'Form Updated Successfully!');
+        if (isInitialPublish) {
+          setShowPublishModal(true);
+        }
+      } catch (err) {
+        setPublishStatus('idle');
+        isPublishingRef.current = false;
+        showToast('Error publishing form', 'error');
+      }
+    } else {
+      setShowPublishModal(true);
+    }
+  };
+
+  const updateCoverScreenSettings = (coverScreenSettings) => {
+    const currentSettings = form.settings || {};
+    setForm({
+      ...form,
+      settings: {
+        ...currentSettings,
+        coverScreen: coverScreenSettings
+      }
+    });
   };
 
   const addQuestion = () => {
@@ -328,8 +394,20 @@ function FormEditor() {
           <button className="btn-icon" onClick={() => window.open(`/view/${form.id}`, '_blank')} title="Preview" style={{ color: 'var(--text-secondary)' }}>
             <Icon name="preview" size={22} />
           </button>
-          <button className="btn btn-primary" onClick={() => setShowPublishModal(true)} style={{ padding: 'var(--space-2) var(--space-6)', marginLeft: 'var(--space-2)' }}>
-            Publish
+          <button 
+            className="btn btn-primary" 
+            onClick={handlePublishClick} 
+            disabled={publishStatus === 'publishing'}
+            style={{ 
+              padding: 'var(--space-2) var(--space-6)', 
+              marginLeft: 'var(--space-2)',
+              minWidth: '110px'
+            }}
+          >
+            {publishStatus === 'publishing' && <Icon name="loader" size={18} style={{ animation: 'spin 1s linear infinite' }} />}
+            {publishStatus === 'publishing'
+                ? (form.publishedAt && hasChangesToPublish ? 'Updating...' : 'Publishing...')
+                : (!form.publishedAt ? 'Publish' : (hasChangesToPublish ? 'Update' : 'Share'))}
           </button>
         </div>
       </div>
@@ -639,6 +717,9 @@ function FormEditor() {
             <button className="btn-icon" title="Add section" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
               <Icon name="section" size={20} />
             </button>
+            <button className="btn-icon" title={form.settings?.coverScreen?.enabled ? "Edit Cover Screen" : "Add Cover Screen"} style={{ color: form.settings?.coverScreen?.enabled ? 'var(--primary-600)' : 'var(--text-secondary)', backgroundColor: form.settings?.coverScreen?.enabled ? 'var(--primary-50)' : 'transparent' }} onClick={() => setShowCoverModal(true)}>
+              <Icon name="presentation" size={20} />
+            </button>
           </div>
         </div>
       )}
@@ -735,6 +816,15 @@ function FormEditor() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Cover Screen Modal */}
+      {showCoverModal && (
+        <CoverScreenModal
+          initialSettings={form.settings?.coverScreen}
+          onSave={updateCoverScreenSettings}
+          onClose={() => setShowCoverModal(false)}
+        />
       )}
 
       <style>{`
