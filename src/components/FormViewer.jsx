@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
@@ -8,7 +9,7 @@ import { signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import Icon from './Icon/Icon';
 import Loader from './Loader';
-import toast from 'react-hot-toast';
+import { useToast } from '../contexts/ToastContext';
 
 function FormViewer() {
   const { formId } = useParams();
@@ -25,8 +26,12 @@ function FormViewer() {
   const [verifyingId, setVerifyingId] = useState(null);
   const [showCoverScreen, setShowCoverScreen] = useState(false);
   const { currentUser } = useAuth();
+  const { showToast } = useToast();
   const [signingIn, setSigningIn] = useState(false);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [duplicateResponse, setDuplicateResponse] = useState(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   useEffect(() => {
     if (currentUser && form?.settings?.privacy?.collectEmail) {
@@ -111,6 +116,7 @@ function FormViewer() {
       const newErrors = { ...errors };
       delete newErrors[questionId];
       setErrors(newErrors);
+      if (duplicateResponse) setDuplicateResponse(null);
     }
   };
 
@@ -125,15 +131,32 @@ function FormViewer() {
 
   const handleVerifyId = async (qId, value) => {
     if (!value || !value.trim()) {
-      toast.error("Please enter an ID first");
+      showToast("Please enter an ID first", 'error');
       return;
     }
     setVerifyingId(qId);
+    
+    // Check if duplicate first
+    if (form.settings?.responses?.preventDuplicateIds) {
+      const allResponses = await getResponses(formId, true);
+      const duplicate = allResponses.find(r => {
+        const val = r.answers && r.answers[qId];
+        return val && String(val).trim().toLowerCase() === String(value).trim().toLowerCase();
+      });
+      if (duplicate) {
+        const newErrors = { ...errors };
+        newErrors[qId] = 'Response already submitted.';
+        setErrors(newErrors);
+        setDuplicateResponse(duplicate);
+        setVerifyingId(null);
+        return;
+      }
+    }
     const student = await getStudentById(value.trim());
     setVerifyingId(null);
 
     if (student) {
-      toast.success(`Student verified: ${student.name}`);
+      showToast(`Student verified: ${student.name}`);
       const newAnswers = { ...answers };
       
       if (form.settings?.privacy?.collectEmail && student.email) {
@@ -166,7 +189,7 @@ function FormViewer() {
       });
       setAnswers(newAnswers);
     } else {
-      toast.error("Student ID not found in database.");
+      showToast("Student ID not found in database.", 'error');
     }
   };
 
@@ -206,6 +229,31 @@ function FormViewer() {
       return;
     }
 
+    if (form.settings?.responses?.preventDuplicateIds) {
+      const idQuestion = questions.find(q => /\bid\b/i.test(q.title));
+      if (idQuestion) {
+        const idAnswer = answers[idQuestion.id];
+        if (idAnswer && String(idAnswer).trim()) {
+          const allResponses = await getResponses(formId, true);
+          const duplicate = allResponses.find(r => {
+            const val = r.answers && r.answers[idQuestion.id];
+            return val && String(val).trim().toLowerCase() === String(idAnswer).trim().toLowerCase();
+          });
+          
+          if (duplicate) {
+            newErrors[idQuestion.id] = 'Response already submitted.';
+            setErrors(newErrors);
+            setDuplicateResponse(duplicate);
+            setTimeout(() => {
+              const element = document.getElementById(`question-${idQuestion.id}`);
+              if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+            return;
+          }
+        }
+      }
+    }
+
     setShowConfirmation(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -240,7 +288,7 @@ function FormViewer() {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Google login failed:", error);
-      toast.error('Failed to sign in. Please try again.');
+      showToast('Failed to sign in. Please try again.', 'error');
     } finally {
       setSigningIn(false);
     }
@@ -254,11 +302,11 @@ function FormViewer() {
       });
       await signOut(auth);
       await signInWithPopup(auth, googleProvider);
-      toast.success('Account switched successfully.');
+      showToast('Account switched successfully.');
     } catch (error) {
       if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
         console.error("Error switching account:", error);
-        toast.error("Failed to switch account.");
+        showToast("Failed to switch account.", 'error');
       }
     } finally {
       setIsSwitchingAccount(false);
@@ -610,7 +658,7 @@ function FormViewer() {
   }
 
   return (
-    <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4) var(--space-4) var(--space-16) var(--space-4)', maxWidth: '768px', margin: '0 auto' }}>
+    <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4) var(--space-4) var(--space-16) var(--space-4)', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
       
       {form.settings?.presentation?.showProgressBar && (
         <div style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: 'var(--bg-app)', padding: 'var(--space-4) 0', marginBottom: 'var(--space-2)' }}>
@@ -635,22 +683,29 @@ function FormViewer() {
       </div>
 
       {currentUser && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: 'var(--text-sm)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-             <span style={{ color: 'var(--text-secondary)' }}>Signed in as <strong style={{ color: 'var(--text-primary)' }}>{currentUser.email}</strong></span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: 'var(--text-sm)' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: '1.4' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Signed in as</span>
+            <strong style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+              {currentUser.email}
+            </strong>
           </div>
-          <button type="button" onClick={handleSwitchAccount} className="btn btn-secondary" style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)' }}>
+          
+          <button type="button" onClick={handleSwitchAccount} className="btn btn-secondary" style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', flexShrink: 0 }}>
             Switch account
           </button>
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
-        
+        <div className="questions-grid">
         {/* Email Collection Card */}
         {form.settings?.privacy?.collectEmail && (
-          <div id="email-input-card" className="card" style={{ marginBottom: 'var(--space-4)', border: errors['email'] ? '1px solid var(--error-500)' : '1px solid var(--border-color)' }}>
+          <div id="email-input-card" className="card" style={{ border: errors['email'] ? '1px solid var(--error-500)' : '1px solid var(--border-color)' }}>
             <div className="card-body">
               <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)' }}>
                 Email <span style={{ color: 'var(--error-500)' }}>*</span>
@@ -682,7 +737,6 @@ function FormViewer() {
             transition={{ delay: index * 0.05 }}
             className="card"
             style={{ 
-              marginBottom: 'var(--space-4)',
               border: errors[q.id] ? '1px solid var(--error-500)' : '1px solid var(--border-color)'
             }}
           >
@@ -702,7 +756,7 @@ function FormViewer() {
                       value={answers[q.id] || ''}
                       onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
                     />
-                    {q.title.toLowerCase().includes('id') && (
+                    {/\bid\b/i.test(q.title) && (
                       <button 
                         type="button" 
                         className="btn btn-secondary"
@@ -776,36 +830,120 @@ function FormViewer() {
               </div>
               
               {errors[q.id] && (
-                <div className="error-text" style={{ marginTop: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div className="error-text" style={{ marginTop: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <circle cx="12" cy="12" r="10"></circle>
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                   </svg>
-                  {errors[q.id]}
+                  <span style={{ flex: 1 }}>{errors[q.id]}</span>
+                  {duplicateResponse && errors[q.id] === 'Response already submitted.' && (
+                    <button 
+                      type="button"
+                      onClick={() => setShowDuplicateModal(true)} 
+                      className="btn" 
+                      style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)', border: '1px solid currentColor', backgroundColor: 'transparent', color: 'inherit', flexShrink: 0 }}
+                    >
+                      View
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           </motion.div>
         ))}
+        </div>
 
         <div className="flex-between" style={{ marginTop: 'var(--space-8)' }}>
+          <button type="button" className="btn btn-ghost" onClick={() => setShowClearConfirm(true)}>
+            Clear form
+          </button>
           <button type="submit" className="btn btn-primary" style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
             Submit
           </button>
-          <button type="button" className="btn btn-ghost" onClick={() => {
-            if(window.confirm('Clear all answers?')) {
-              const initialAnswers = {};
-              questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
-              setAnswers(initialAnswers);
-              setEmail('');
-              setErrors({});
-            }
-          }}>
-            Clear form
-          </button>
         </div>
       </form>
+
+      {showClearConfirm && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(2px)' }}>
+          <div className="card animate-fade-in" style={{ padding: 'var(--space-6)', maxWidth: '400px', width: '90%', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', color: 'var(--text-primary)' }}>
+              <Icon name="delete" size={24} />
+              <h3 style={{ fontSize: 'var(--text-lg)', margin: 0 }}>Clear all answers?</h3>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+              This will remove all answers from all questions, and cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+              <button 
+                className="btn" 
+                style={{ backgroundColor: 'var(--gray-100)', color: 'var(--text-primary)', border: 'none' }} 
+                onClick={() => setShowClearConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                style={{ border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                onClick={() => {
+                  const initialAnswers = {};
+                  questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
+                  setAnswers(initialAnswers);
+                  if (form?.settings?.privacy?.collectEmail && !currentUser) {
+                    setEmail('');
+                  }
+                  setErrors({});
+                  setShowClearConfirm(false);
+                  showToast('Form cleared');
+                }}
+              >
+                Clear form
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showDuplicateModal && duplicateResponse && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(2px)', padding: 'var(--space-4)' }}>
+          <div className="card animate-fade-in" style={{ padding: 'var(--space-6)', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="flex-between" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-4)' }}>
+              <h3 style={{ fontSize: 'var(--text-xl)', margin: 0, color: 'var(--text-primary)' }}>Previously Submitted Response</h3>
+              <button type="button" className="btn-icon" onClick={() => setShowDuplicateModal(false)}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              {duplicateResponse.email && (
+                <div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Email</div>
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)' }}>{duplicateResponse.email}</div>
+                </div>
+              )}
+              {questions.map(q => {
+                const answer = duplicateResponse.answers[q.id];
+                if (answer === undefined || answer === null || answer === '') return null;
+                return (
+                  <div key={q.id}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{q.title}</div>
+                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)' }}>
+                      {Array.isArray(answer) ? answer.join(', ') : answer}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowDuplicateModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       <style>{`
         .hover-bg:hover { background-color: var(--gray-50); }
       `}</style>

@@ -6,6 +6,7 @@ import Icon from './Icon/Icon';
 import Loader from './Loader';
 import { useToast } from '../contexts/ToastContext';
 import { getForms, deleteForm, saveForm } from '../services/db';
+import { useAuth } from '../contexts/AuthContext';
 
 function MyForms() {
   const [forms, setForms] = useState([]);
@@ -15,16 +16,18 @@ function MyForms() {
   const [formToDelete, setFormToDelete] = useState(null);
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const fetchForms = async () => {
+      if (!currentUser) return;
       setLoading(true);
-      const data = await getForms();
+      const data = await getForms(currentUser.uid, true);
       setForms(data);
       setLoading(false);
     };
     fetchForms();
-  }, []);
+  }, [currentUser]);
 
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
@@ -35,6 +38,7 @@ function MyForms() {
       const newFormId = uuidv4();
       const initialForm = {
         id: newFormId,
+        userId: currentUser.uid,
         title: 'Untitled Form',
         description: '',
         questions: [{

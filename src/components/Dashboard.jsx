@@ -4,22 +4,25 @@ import Icon from './Icon/Icon';
 import Loader from './Loader';
 import { v4 as uuidv4 } from 'uuid';
 import { getForms, saveForm } from '../services/db';
+import { useAuth } from '../contexts/AuthContext';
 
 function Dashboard() {
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const fetchForms = async () => {
+      if (!currentUser) return;
       setLoading(true);
-      const data = await getForms();
+      const data = await getForms(currentUser.uid, true);
       setForms(data);
       setLoading(false);
     };
     fetchForms();
-  }, []);
+  }, [currentUser]);
 
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
@@ -28,6 +31,7 @@ function Dashboard() {
     setCreating(true);
     const newForm = {
       id: uuidv4(),
+      userId: currentUser.uid,
       title: 'Untitled Form',
       description: '',
       questions: [],

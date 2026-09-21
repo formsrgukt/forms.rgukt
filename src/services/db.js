@@ -13,13 +13,15 @@ export const clearCache = () => {
   responsesCache = null;
 };
 
-export const getForms = async (forceRefresh = false) => {
-  if (formsCache && !forceRefresh) return formsCache;
+export const getForms = async (userId = null, forceRefresh = false) => {
+  if (formsCache && !forceRefresh) {
+    return userId ? formsCache.filter(f => f.userId === userId) : formsCache;
+  }
   try {
     const q = query(collection(db, FORMS_COLLECTION), orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
     formsCache = querySnapshot.docs.map(doc => doc.data());
-    return formsCache;
+    return userId ? formsCache.filter(f => f.userId === userId) : formsCache;
   } catch (error) {
     console.error("Error getting forms: ", error);
     return [];

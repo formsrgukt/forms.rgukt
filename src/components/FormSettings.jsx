@@ -4,7 +4,7 @@ import Icon from './Icon/Icon';
 function FormSettings({ form, updateFormMeta }) {
   // Ensure settings object exists to avoid errors on older forms
   const settings = form.settings || {
-    responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false, limitResponses: false, expirationDate: "", maxResponses: "" },
+    responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false, limitResponses: false, expirationDate: "", maxResponses: "", preventDuplicateIds: false },
     privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
     presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
     coverScreen: { enabled: false, title: "", description: "", buttonText: "Start", icon: "form", animation: "fade-up", backgroundColor: "#ffffff", textColor: "#1f2937", buttonColor: "#3b82f6", fontFamily: "Inter" }
@@ -125,6 +125,12 @@ function FormSettings({ form, updateFormMeta }) {
             description="Respondents can change their answers after submitting."
             checked={settings.responses.allowEditing} 
             onChange={(v) => updateSetting('responses', 'allowEditing', v)} 
+          />
+          <SettingToggle 
+            label="Prevent duplicate IDs" 
+            description="Ensure each student ID can only be submitted once per form."
+            checked={settings.responses.preventDuplicateIds || false} 
+            onChange={(v) => updateSetting('responses', 'preventDuplicateIds', v)} 
           />
         </div>
       </div>

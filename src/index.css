@@ -331,6 +331,20 @@ input[type="number"] {
   margin: 0 auto;
 }
 
+/* Forms */
+.questions-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .questions-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
