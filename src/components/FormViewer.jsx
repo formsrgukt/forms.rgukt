@@ -1,18 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { loadGoogleFont } from '../utils/fontLoader';
 import { getForm, saveResponse, getStudentById, getResponses } from '../services/db';
-import { useAuth } from '../contexts/AuthContext';
-import { signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { getAuth, signInWithPopup, signOut, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
+import { auth as fallbackAuth, firebaseConfig, googleProvider } from '../firebase';
+
 import Icon from './Icon/Icon';
 import Loader from './Loader';
 import { useToast } from '../contexts/ToastContext';
 
+let viewerAuth;
+try {
+  const viewerApp = getApps().find(app => app.name === 'ViewerApp') || initializeApp(firebaseConfig, 'ViewerApp');
+  viewerAuth = getAuth(viewerApp);
+} catch (e) {
+  console.error('Secondary Auth error:', e);
+  viewerAuth = fallbackAuth;
+}
+
 function FormViewer() {
   const { formId } = useParams();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isPreview = searchParams.get('preview') === 'true';
+  
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState({});
@@ -25,19 +39,29 @@ function FormViewer() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [verifyingId, setVerifyingId] = useState(null);
   const [showCoverScreen, setShowCoverScreen] = useState(false);
-  const { currentUser } = useAuth();
+  const [viewerUser, setViewerUser] = useState(null);
   const { showToast } = useToast();
   const [signingIn, setSigningIn] = useState(false);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [duplicateResponse, setDuplicateResponse] = useState(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileUploadStatus, setFileUploadStatus] = useState({});
 
   useEffect(() => {
-    if (currentUser && form?.settings?.privacy?.collectEmail) {
-      setEmail(currentUser.email);
+    if (!viewerAuth) return;
+    const unsubscribe = onAuthStateChanged(viewerAuth, (user) => {
+      setViewerUser(user);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (viewerUser && form?.settings?.privacy?.collectEmail) {
+      setEmail(viewerUser.email);
     }
-  }, [currentUser, form]);
+  }, [viewerUser, form]);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -193,6 +217,70 @@ function FormViewer() {
     }
   };
 
+  const uploadFileInline = async (qId, file) => {
+    if (!file) return;
+    try {
+      setFileUploadStatus(prev => ({ ...prev, [qId]: { uploading: true, progress: 0 } }));
+      
+      let accessToken = localStorage.getItem('google_drive_token');
+      if (!accessToken) {
+        showToast("Please grant Google Drive access to upload your files.");
+        const provider = new GoogleAuthProvider();
+        provider.addScope('https://www.googleapis.com/auth/drive.file');
+        const result = await signInWithPopup(viewerAuth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        accessToken = credential?.accessToken;
+        if (accessToken) localStorage.setItem('google_drive_token', accessToken);
+      }
+      
+      if (!accessToken) throw new Error("Failed to get Google Drive access token.");
+      
+      const metadata = { name: file.name, mimeType: file.type };
+      const formData = new FormData();
+      formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      formData.append('file', file);
+      
+      const uploadRes = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', true);
+        xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100);
+            setFileUploadStatus(prev => ({ ...prev, [qId]: { uploading: true, progress: percentComplete } }));
+          }
+        };
+        xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data: JSON.parse(xhr.responseText || '{}') });
+        xhr.onerror = () => reject(new Error("Network Error"));
+        xhr.send(formData);
+      });
+      
+      if (!uploadRes.ok) {
+        if (uploadRes.status === 401) {
+          localStorage.removeItem('google_drive_token');
+          throw new Error("Your session expired. Please try again to re-authenticate.");
+        }
+        throw new Error(`Upload failed: ${uploadRes.data.error?.message || uploadRes.statusText}`);
+      }
+      
+      const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadRes.data.id}/permissions`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+      });
+      
+      if (!permRes.ok) throw new Error("Failed to set file permissions.");
+      
+      handleAnswerChange(qId, uploadRes.data.webViewLink, 'file_upload');
+      showToast(`Uploaded ${file.name} successfully!`, 'success');
+    } catch (error) {
+      console.error("Upload error:", error);
+      showToast(error.message, 'error');
+    } finally {
+      setFileUploadStatus(prev => ({ ...prev, [qId]: { uploading: false, progress: 0 } }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -266,8 +354,101 @@ function FormViewer() {
 
     try {
       setIsSubmitting(true);
+      
+      const filesToUpload = [];
+      const updatedAnswers = { ...answers };
+      
+      Object.keys(answers).forEach(qId => {
+        if (answers[qId] instanceof File) {
+          filesToUpload.push({ qId, file: answers[qId] });
+        }
+      });
+      
+      if (filesToUpload.length > 0) {
+        let accessToken = localStorage.getItem('google_drive_token');
+        
+        if (!accessToken) {
+          showToast("Please grant Google Drive access to upload your files.");
+          const provider = new GoogleAuthProvider();
+          provider.addScope('https://www.googleapis.com/auth/drive.file');
+          
+          const result = await signInWithPopup(viewerAuth, provider);
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          accessToken = credential?.accessToken;
+          if (accessToken) localStorage.setItem('google_drive_token', accessToken);
+        }
+        
+        if (!accessToken) {
+          throw new Error("Failed to get Google Drive access token.");
+        }
+        
+        for (const { qId, file } of filesToUpload) {
+          showToast(`Uploading ${file.name}...`);
+          
+          const metadata = { name: file.name, mimeType: file.type };
+          const formData = new FormData();
+          formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          formData.append('file', file);
+          
+          setUploadProgress(1);
+          const uploadRes = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', true);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken);
+            
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                const percentComplete = Math.round((event.loaded / event.total) * 100);
+                setUploadProgress(percentComplete);
+              }
+            };
+            
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve({ ok: true, data: JSON.parse(xhr.responseText) });
+              } else {
+                resolve({ ok: false, status: xhr.status, statusText: xhr.statusText, data: JSON.parse(xhr.responseText || '{}') });
+              }
+            };
+            
+            xhr.onerror = () => reject(new Error("Network Error"));
+            xhr.send(formData);
+          });
+          
+          if (!uploadRes.ok) {
+            if (uploadRes.status === 401) {
+              localStorage.removeItem('google_drive_token');
+              throw new Error("Your session expired. Please submit again to re-authenticate.");
+            }
+            throw new Error(`Upload failed: ${uploadRes.data.error?.message || uploadRes.statusText}`);
+          }
+          const fileData = uploadRes.data;
+          setUploadProgress(100);
+          
+          const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + accessToken,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+          });
+          
+          if (!permRes.ok) {
+            if (permRes.status === 401) {
+              localStorage.removeItem('google_drive_token');
+              throw new Error("Your session expired. Please submit again to re-authenticate.");
+            }
+            const errData = await permRes.json().catch(() => ({}));
+            throw new Error(`Permissions update failed: ${errData.error?.message || permRes.statusText}`);
+          }
+          
+          updatedAnswers[qId] = fileData.webViewLink;
+        }
+      }
+
       const responseData = {
-        answers,
+        answers: updatedAnswers,
         ...(form.settings?.privacy?.collectEmail ? { email } : {})
       };
       await saveResponse(formId, responseData);
@@ -275,9 +456,10 @@ function FormViewer() {
       setShowConfirmation(false);
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert("There was an error submitting your form. Please try again.");
+      alert(`There was an error submitting your form or uploading files: ${error.message || error}. Please try again.`);
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -285,7 +467,13 @@ function FormViewer() {
     if (signingIn) return;
     setSigningIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      const result = await signInWithPopup(viewerAuth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem('google_drive_token', credential.accessToken);
+      }
     } catch (error) {
       console.error("Google login failed:", error);
       showToast('Failed to sign in. Please try again.', 'error');
@@ -297,11 +485,17 @@ function FormViewer() {
   const handleSwitchAccount = async () => {
     try {
       setIsSwitchingAccount(true);
-      googleProvider.setCustomParameters({
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      provider.setCustomParameters({
         prompt: 'select_account'
       });
-      await signOut(auth);
-      await signInWithPopup(auth, googleProvider);
+      await signOut(viewerAuth);
+      const result = await signInWithPopup(viewerAuth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem('google_drive_token', credential.accessToken);
+      }
       showToast('Account switched successfully.');
     } catch (error) {
       if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
@@ -317,7 +511,7 @@ function FormViewer() {
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
   if (isSwitchingAccount) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
-  if (!currentUser) {
+  if (!viewerUser) {
     return (
       <div className="form-viewer-container animate-fade-in" style={{ padding: 'var(--space-4)', maxWidth: '600px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
         <div className="card" style={{ padding: 'var(--space-12) var(--space-8)', borderTop: '8px solid var(--primary-500)', textAlign: 'center', width: '100%' }}>
@@ -584,7 +778,9 @@ function FormViewer() {
             {questions.map(q => {
               const answer = answers[q.id];
               let displayAnswer = answer;
-              if (Array.isArray(answer)) {
+              if (answer instanceof File) {
+                displayAnswer = answer.name;
+              } else if (Array.isArray(answer)) {
                 displayAnswer = answer.join(', ');
               } else if (answer === undefined || answer === null || answer === '') {
                 displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
@@ -641,7 +837,9 @@ function FormViewer() {
             style={{ opacity: (!isConfirmed || isSubmitting) ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
           >
             {isSubmitting && <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-            {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
+            {isSubmitting 
+              ? (uploadProgress > 0 && uploadProgress < 100 ? `Uploading... ${uploadProgress}%` : 'Submitting...') 
+              : 'Confirm Submit'}
           </button>
         </div>
       </div>
@@ -682,7 +880,7 @@ function FormViewer() {
         </div>
       </div>
 
-      {currentUser && (
+      {viewerUser && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: 'var(--text-sm)' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>
@@ -691,7 +889,7 @@ function FormViewer() {
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: '1.4' }}>
             <span style={{ color: 'var(--text-secondary)' }}>Signed in as</span>
             <strong style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-              {currentUser.email}
+              {viewerUser.email}
             </strong>
           </div>
           
@@ -827,6 +1025,116 @@ function FormViewer() {
                     ))}
                   </select>
                 )}
+
+                {q.type === 'file_upload' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0' }}>
+                    <label style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 'var(--space-3)',
+                      padding: 'var(--space-3) var(--space-4)',
+                      border: '2px dashed var(--gray-300)',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      backgroundColor: 'var(--gray-50)',
+                      width: '100%',
+                      maxWidth: '300px',
+                      transition: 'all 0.2s ease',
+                      textAlign: 'center'
+                    }} className="hover-border-primary">
+                      <Icon name="file_upload" size={20} color="var(--primary-500)" />
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {answers[q.id] ? (answers[q.id].name || (typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') ? 'File Uploaded' : answers[q.id])) : 'Click to upload a file'}
+                      </span>
+                      <input
+                        type="file"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleAnswerChange(q.id, e.target.files[0] || '', q.type)}
+                      />
+                    </label>
+                    
+                    {answers[q.id] instanceof File && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => uploadFileInline(q.id, answers[q.id])}
+                        disabled={fileUploadStatus[q.id]?.uploading}
+                        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                      >
+                        {fileUploadStatus[q.id]?.uploading ? (
+                          <>
+                            <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                            Uploading... {fileUploadStatus[q.id].progress}%
+                          </>
+                        ) : (
+                          'Upload Now'
+                        )}
+                      </button>
+                    )}
+                    
+                    {typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') && (
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--success-600)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                        <Icon name="check" size={16} /> Uploaded successfully
+                      </span>
+                    )}
+                  </div>
+                )}
+                
+                {q.type === 'linear_scale' && (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0', overflowX: 'auto' }}>
+                    <table style={{ borderSpacing: '0', borderCollapse: 'collapse', textAlign: 'center' }}>
+                      <thead>
+                        <tr>
+                          {[1, 2, 3, 4, 5].map(num => (
+                            <td key={`th-${num}`} style={{ padding: '0 var(--space-3)', fontSize: 'var(--text-base)', color: 'var(--text-primary)', fontWeight: 'var(--font-weight-medium)', paddingBottom: 'var(--space-3)' }}>
+                              {num}
+                            </td>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          {[1, 2, 3, 4, 5].map(num => (
+                            <td key={`td-${num}`} style={{ padding: '0 var(--space-3)' }}>
+                              <label style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer', margin: 0, padding: '4px', borderRadius: '50%' }} className="hover-bg">
+                                <input
+                                  type="radio"
+                                  name={q.id}
+                                  value={num.toString()}
+                                  checked={answers[q.id] === num.toString()}
+                                  onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                                  style={{ width: '20px', height: '20px', accentColor: 'var(--primary-500)', cursor: 'pointer', margin: 0 }}
+                                />
+                              </label>
+                            </td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                
+                {q.type === 'date' && (
+                  <input
+                    type="date"
+                    className={`input-field ${errors[q.id] ? 'error' : ''}`}
+                    style={{ width: '100%', maxWidth: '200px' }}
+                    value={answers[q.id] || ''}
+                    onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                  />
+                )}
+                
+                {q.type === 'time' && (
+                  <input
+                    type="time"
+                    className={`input-field ${errors[q.id] ? 'error' : ''}`}
+                    style={{ width: '100%', maxWidth: '200px' }}
+                    value={answers[q.id] || ''}
+                    onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                  />
+                )}
               </div>
               
               {errors[q.id] && (
@@ -889,7 +1197,7 @@ function FormViewer() {
                   const initialAnswers = {};
                   questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
                   setAnswers(initialAnswers);
-                  if (form?.settings?.privacy?.collectEmail && !currentUser) {
+                  if (form?.settings?.privacy?.collectEmail && !viewerUser) {
                     setEmail('');
                   }
                   setErrors({});

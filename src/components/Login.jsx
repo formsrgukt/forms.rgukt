@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from './Icon/Icon';
 import './Login.css';
@@ -21,7 +21,13 @@ export default function Login() {
     if (signingIn) return;
     setSigningIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem('google_drive_token', credential.accessToken);
+      }
       navigate('/');
     } catch (error) {
       console.error("Google login failed:", error);

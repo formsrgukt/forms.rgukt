@@ -5,14 +5,14 @@ import { initializeFirestore, enableIndexedDbPersistence } from "firebase/firest
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyAanCQfoUadykz8LTQ5Mfl44L7i3Xoz9pw",
-  authDomain: "rguktforms.firebaseapp.com",
-  projectId: "rguktforms",
-  storageBucket: "rguktforms.firebasestorage.app",
-  messagingSenderId: "864422477402",
-  appId: "1:864422477402:web:4669b188c339e29c36a263",
-  measurementId: "G-CN0QGP2725"
+export const firebaseConfig = {
+  apiKey: "AIzaSyD9ZxcacBeB0wzhivs3AcfV91qf05e5cb8",
+  authDomain: "rgukt-forms-v2.firebaseapp.com",
+  projectId: "rgukt-forms-v2",
+  storageBucket: "rgukt-forms-v2.firebasestorage.app",
+  messagingSenderId: "600717376496",
+  appId: "1:600717376496:web:e10b1258fd445034b9bb35",
+  measurementId: "G-QNZBPZSW3M"
 };
 
 // Initialize Firebase

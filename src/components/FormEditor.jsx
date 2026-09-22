@@ -20,7 +20,11 @@ const QUESTION_TYPE_OPTIONS = [
   { value: 'paragraph', label: 'Paragraph', icon: 'paragraph' },
   { value: 'multiple_choice', label: 'Multiple choice', icon: 'multiple_choice' },
   { value: 'checkboxes', label: 'Checkboxes', icon: 'checkboxes' },
-  { value: 'dropdown', label: 'Dropdown', icon: 'dropdown' }
+  { value: 'dropdown', label: 'Dropdown', icon: 'dropdown' },
+  { value: 'file_upload', label: 'File upload', icon: 'file_upload' },
+  { value: 'linear_scale', label: 'Linear scale', icon: 'linear_scale' },
+  { value: 'date', label: 'Date', icon: 'date' },
+  { value: 'time', label: 'Time', icon: 'time' }
 ];
 
 const COVER_ICONS = [
@@ -54,6 +58,7 @@ function FormEditor() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showThemeSidebar, setShowThemeSidebar] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [viewingFile, setViewingFile] = useState(null);
   const [responseToDelete, setResponseToDelete] = useState(null);
   const [deletingResponseId, setDeletingResponseId] = useState(null);
   const [showCoverModal, setShowCoverModal] = useState(false);
@@ -85,20 +90,10 @@ function FormEditor() {
     if (form && initialLoadRef.current) {
       if (!isPublishingRef.current) {
         setHasChangesToPublish(true);
+        setSaveStatus('unsaved'); // Indicate there are unsaved changes
       }
-      setSaveStatus('saving');
-      const timer = setTimeout(async () => {
-        try {
-          await saveForm(form);
-          setSaveStatus('saved');
-        } catch (error) {
-          console.error("Error saving form:", error);
-          setSaveStatus('error');
-        }
-      }, 800);
-      return () => clearTimeout(timer);
     }
-  }, [form, formId]);
+  }, [form]);
 
   useEffect(() => {
     if (formId) {
@@ -145,15 +140,16 @@ function FormEditor() {
       const isInitialPublish = !form.publishedAt;
       isPublishingRef.current = true;
       setPublishStatus('publishing');
-      
-      const now = Date.now();
-      const updatedForm = { ...form, publishedAt: now, updatedAt: now };
+      setSaveStatus('saving');
       
       try {
+        const now = Date.now();
+        const updatedForm = { ...form, publishedAt: now, updatedAt: now };
         await saveForm(updatedForm);
         setForm(updatedForm);
         setHasChangesToPublish(false);
         setPublishStatus('idle');
+        setSaveStatus('saved');
         setTimeout(() => {
           isPublishingRef.current = false;
         }, 50);
@@ -163,8 +159,9 @@ function FormEditor() {
         }
       } catch (err) {
         setPublishStatus('idle');
+        setSaveStatus('error');
         isPublishingRef.current = false;
-        showToast('Error publishing form', 'error');
+        showToast('Error saving form', 'error');
       }
     } else {
       setShowPublishModal(true);
@@ -391,7 +388,7 @@ function FormEditor() {
           <button className="btn-icon" onClick={() => setShowThemeSidebar(true)} title="Customize Theme" style={{ color: 'var(--text-secondary)' }}>
             <Icon name="theme" size={22} />
           </button>
-          <button className="btn-icon" onClick={() => window.open(`/view/${form.id}`, '_blank')} title="Preview" style={{ color: 'var(--text-secondary)' }}>
+          <button className="btn-icon" onClick={() => window.open(`/view/${form.id}?preview=true`, '_blank')} title="Preview" style={{ color: 'var(--text-secondary)' }}>
             <Icon name="preview" size={22} />
           </button>
           <button 
@@ -502,7 +499,17 @@ function FormEditor() {
                         {form.questions.map(q => {
                           const answer = response.answers?.[q.id];
                           let displayAnswer = answer;
-                          if (Array.isArray(answer)) {
+                          if (typeof answer === 'string' && answer.startsWith('https://drive.google.com/file/d/')) {
+                            displayAnswer = (
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                                onClick={() => setViewingFile(answer.replace('/view', '/preview'))}
+                              >
+                                <Icon name="external-link" size={14} /> View File
+                              </button>
+                            );
+                          } else if (Array.isArray(answer)) {
                             displayAnswer = answer.join(', ');
                           } else if (answer === undefined || answer === null || answer === '') {
                             displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
@@ -623,6 +630,66 @@ function FormEditor() {
                               {q.type === 'paragraph' && (
                                 <div style={{ borderBottom: '1px dotted var(--gray-400)', width: '100%', padding: 'var(--space-2) 0', color: 'var(--text-tertiary)' }}>
                                   Long answer text
+                                </div>
+                              )}
+                              {q.type === 'file_upload' && (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-2) 0' }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 'var(--space-3)',
+                                    padding: 'var(--space-3) var(--space-4)',
+                                    border: '2px dashed var(--gray-300)',
+                                    borderRadius: 'var(--radius-md)',
+                                    backgroundColor: 'var(--gray-50)',
+                                    width: '100%',
+                                    maxWidth: '300px',
+                                  }}>
+                                    <Icon name="file_upload" size={20} color="var(--primary-500)" />
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                                      Respondents will upload files here
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              {q.type === 'linear_scale' && (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0', overflowX: 'auto', color: 'var(--text-secondary)' }}>
+                                  <table style={{ borderSpacing: '0', borderCollapse: 'collapse', textAlign: 'center' }}>
+                                    <thead>
+                                      <tr>
+                                        {[1, 2, 3, 4, 5].map(num => (
+                                          <td key={`th-${num}`} style={{ padding: '0 var(--space-3)', fontSize: 'var(--text-sm)', paddingBottom: 'var(--space-3)' }}>
+                                            {num}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr>
+                                        {[1, 2, 3, 4, 5].map(num => (
+                                          <td key={`td-${num}`} style={{ padding: '0 var(--space-3)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                              <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid var(--gray-300)' }}></div>
+                                            </div>
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                              {q.type === 'date' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderBottom: '1px dotted var(--gray-400)', width: 'fit-content', padding: 'var(--space-2) 0', color: 'var(--text-tertiary)' }}>
+                                  <span>Month, day, year</span>
+                                  <Icon name="date" size={16} />
+                                </div>
+                              )}
+                              {q.type === 'time' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', borderBottom: '1px dotted var(--gray-400)', width: 'fit-content', padding: 'var(--space-2) 0', color: 'var(--text-tertiary)' }}>
+                                  <span>Time</span>
+                                  <Icon name="time" size={16} />
                                 </div>
                               )}
                               {(q.type === 'multiple_choice' || q.type === 'checkboxes' || q.type === 'dropdown') && (
@@ -825,6 +892,27 @@ function FormEditor() {
           onSave={updateCoverScreenSettings}
           onClose={() => setShowCoverModal(false)}
         />
+      )}
+
+      {viewingFile && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
+          <div className="card animate-fade-in" style={{ width: '90%', height: '90%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-app)', padding: 0, overflow: 'hidden' }}>
+            <div className="flex-between" style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--gray-50)' }}>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>File Viewer</h3>
+              <button className="btn-icon" onClick={() => setViewingFile(null)}>
+                <Icon name="close" size={24} />
+              </button>
+            </div>
+            <div style={{ flex: 1, backgroundColor: '#f0f0f0' }}>
+              <iframe 
+                src={viewingFile} 
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                title="File Viewer"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
