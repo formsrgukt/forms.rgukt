@@ -8,6 +8,7 @@ import Analytics from './components/Analytics';
 import MyForms from './components/MyForms';
 import Login from './components/Login';
 import Templates from './components/Templates';
+import ImportForm from './components/ImportForm';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
@@ -32,6 +33,7 @@ function App() {
             <Route path="/forms" element={<ProtectedRoute><Layout><MyForms /></Layout></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute><Layout><Templates /></Layout></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Layout><Analytics /></Layout></ProtectedRoute>} />
+            <Route path="/import/:formId" element={<ProtectedRoute><Layout><ImportForm /></Layout></ProtectedRoute>} />
             <Route path="*" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
           </Routes>
         </Router>

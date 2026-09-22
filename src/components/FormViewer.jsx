@@ -11,6 +11,7 @@ import { auth as fallbackAuth, firebaseConfig, googleProvider } from '../firebas
 import Icon from './Icon/Icon';
 import Loader from './Loader';
 import { useToast } from '../contexts/ToastContext';
+import confetti from 'canvas-confetti';
 
 let viewerAuth;
 try {
@@ -48,6 +49,11 @@ function FormViewer() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileUploadStatus, setFileUploadStatus] = useState({});
+  const [uploadedFileNames, setUploadedFileNames] = useState({});
+  const [focusIndex, setFocusIndex] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [tabSwitches, setTabSwitches] = useState(0);
+  const [geoError, setGeoError] = useState(null);
 
   useEffect(() => {
     if (!viewerAuth) return;
@@ -80,7 +86,7 @@ function FormViewer() {
           currentForm.settings = {
             responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false },
             privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
-            presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
+            presentation: { showProgressBar: false, shuffleQuestions: false, showSubmitAnotherResponse: true, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
             theme: { fontFamily: 'Inter' }
           };
         }
@@ -125,7 +131,150 @@ function FormViewer() {
     fetchForm();
   }, [formId]);
 
+  useEffect(() => {
+    if (!form || !form.settings?.timeLimit?.enabled || submitted || isSubmitting) return;
+
+    if (timeLeft === null) {
+      setTimeLeft((form.settings.timeLimit.durationMinutes || 10) * 60);
+      return;
+    }
+
+    if (timeLeft <= 0) {
+      showToast("Time's up! Submitting form...", "error");
+      handleFinalSubmit();
+      return;
+    }
+
+    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    return () => clearInterval(timer);
+  }, [form, timeLeft, submitted, isSubmitting]);
+
+  useEffect(() => {
+    if (!form || !form.settings?.proctoring?.tabSwitchLimit || submitted || isSubmitting) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setTabSwitches(prev => {
+          const newCount = prev + 1;
+          const max = form.settings.proctoring.maxTabSwitches || 3;
+          if (newCount >= max) {
+            showToast("Maximum tab switches exceeded. Form will auto-submit.", "error");
+            handleFinalSubmit();
+          } else {
+            showToast(`Warning: Tab switched. (${newCount}/${max})`, "error");
+          }
+          return newCount;
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [form, submitted, isSubmitting]);
+
+  useEffect(() => {
+    if (!form || !form.settings?.gamification?.enableBackgroundMusic) return;
+    const audio = new Audio("https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3");
+    audio.loop = true;
+    audio.volume = 0.2;
+    const playMusic = () => {
+      audio.play().catch(e => console.log("Audio play blocked by browser"));
+      document.removeEventListener('click', playMusic);
+    };
+    document.addEventListener('click', playMusic);
+    return () => {
+      audio.pause();
+      document.removeEventListener('click', playMusic);
+    };
+  }, [form]);
+
+  useEffect(() => {
+    if (!form || !form.settings?.gamification?.cursorEffect || form.settings.gamification.cursorEffect === 'none') return;
+    const handleMouseMove = (e) => {
+        const el = document.createElement('div');
+        el.style.position = 'fixed';
+        el.style.left = `${e.clientX}px`;
+        el.style.top = `${e.clientY}px`;
+        el.style.pointerEvents = 'none';
+        el.style.zIndex = 9999;
+        el.style.fontSize = '20px';
+        el.innerText = form.settings.gamification.cursorEffect === 'sparkles' ? '✨' : '🫧';
+        el.style.transition = 'all 1s ease-out';
+        document.body.appendChild(el);
+        requestAnimationFrame(() => {
+            el.style.transform = `translate(${Math.random() * 40 - 20}px, ${Math.random() * 40 - 20}px) scale(0)`;
+            el.style.opacity = 0;
+        });
+        setTimeout(() => el.remove(), 1000);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => document.removeEventListener('mousemove', handleMouseMove);
+  }, [form]);
+
+  useEffect(() => {
+    if (!form || !form.settings?.geofencing?.enabled) return;
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation is not supported by your browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const targetLat = parseFloat(form.settings.geofencing.latitude);
+        const targetLon = parseFloat(form.settings.geofencing.longitude);
+        const maxRadius = parseInt(form.settings.geofencing.radiusMeters, 10);
+        if (isNaN(targetLat) || isNaN(targetLon)) return;
+
+        const R = 6371e3;
+        const f1 = latitude * Math.PI/180;
+        const f2 = targetLat * Math.PI/180;
+        const df = (targetLat-latitude) * Math.PI/180;
+        const dl = (targetLon-longitude) * Math.PI/180;
+        const a = Math.sin(df/2) * Math.sin(df/2) + Math.cos(f1) * Math.cos(f2) * Math.sin(dl/2) * Math.sin(dl/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+
+        if (distance > maxRadius) {
+          setGeoError(`You must be within ${maxRadius}m of the required location. You are currently ${Math.round(distance)}m away.`);
+        }
+      },
+      (error) => {
+        setGeoError("Unable to retrieve your location. Please allow location access to fill out this form.");
+      }
+    );
+  }, [form]);
+
+  const playSound = () => {
+    if (!form?.settings?.gamification?.soundEffects) return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.05);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.05);
+    } catch (e) {}
+  };
+
+  const readAloud = (text) => {
+    if (!('speechSynthesis' in window)) {
+      showToast("Text-to-speech not supported in this browser.", "error");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleAnswerChange = (questionId, value, type) => {
+    playSound();
     if (type === 'checkboxes') {
       const currentValues = answers[questionId] || [];
       const newValues = currentValues.includes(value)
@@ -141,6 +290,15 @@ function FormViewer() {
       delete newErrors[questionId];
       setErrors(newErrors);
       if (duplicateResponse) setDuplicateResponse(null);
+    }
+    
+    // If they clear the file or pick a new one, remove the old uploaded file name
+    if (type === 'file_upload' && value instanceof File === false && !value) {
+      if (uploadedFileNames[questionId]) {
+        const newNames = { ...uploadedFileNames };
+        delete newNames[questionId];
+        setUploadedFileNames(newNames);
+      }
     }
   };
 
@@ -271,6 +429,7 @@ function FormViewer() {
       
       if (!permRes.ok) throw new Error("Failed to set file permissions.");
       
+      setUploadedFileNames(prev => ({ ...prev, [qId]: file.name }));
       handleAnswerChange(qId, uploadRes.data.webViewLink, 'file_upload');
       showToast(`Uploaded ${file.name} successfully!`, 'success');
     } catch (error) {
@@ -447,13 +606,56 @@ function FormViewer() {
         }
       }
 
+      let webcamImage = null;
+      if (form.settings?.proctoring?.requireWebcamSnapshot) {
+          try {
+              showToast("Capturing identity verification snapshot...", "info");
+              webcamImage = await new Promise((resolve, reject) => {
+                  navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => {
+                      const video = document.createElement('video');
+                      video.srcObject = stream;
+                      video.play();
+                      video.onloadedmetadata = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        stream.getTracks().forEach(track => track.stop());
+                        resolve(dataUrl);
+                      };
+                    })
+                    .catch(reject);
+              });
+          } catch(e) {
+              alert("Failed to access webcam. This form requires a webcam snapshot to submit.");
+              setIsSubmitting(false);
+              return;
+          }
+      }
+
       const responseData = {
         answers: updatedAnswers,
-        ...(form.settings?.privacy?.collectEmail ? { email } : {})
+        ...(form.settings?.privacy?.collectEmail ? { email } : {}),
+        ...(webcamImage ? { proctoringSnapshot: webcamImage } : {})
       };
       await saveResponse(formId, responseData);
       setSubmitted(true);
       setShowConfirmation(false);
+      
+      if (form.settings?.gamification?.enableConfetti) {
+        confetti({
+          particleCount: 150,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
+      
+      if (form.settings?.presentation?.redirectUrl) {
+        window.location.href = form.settings.presentation.redirectUrl;
+      }
     } catch (error) {
       console.error("Error submitting form:", error);
       alert(`There was an error submitting your form or uploading files: ${error.message || error}. Please try again.`);
@@ -510,6 +712,18 @@ function FormViewer() {
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
   if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
   if (isSwitchingAccount) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
+
+  if (geoError) {
+    return (
+      <div className="form-viewer-container animate-fade-in" style={{ padding: 'var(--space-4)', maxWidth: '600px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <div className="card" style={{ padding: 'var(--space-12) var(--space-8)', borderTop: '8px solid var(--error-500)', textAlign: 'center', width: '100%' }}>
+          <Icon name="location" size={48} color="var(--error-500)" />
+          <h2 style={{ fontSize: 'var(--text-2xl)', margin: 'var(--space-4) 0', color: 'var(--text-primary)' }}>Location Verification Failed</h2>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--error-600)' }}>{geoError}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!viewerUser) {
     return (
@@ -733,7 +947,7 @@ function FormViewer() {
             {isSubmitting ? 'Please wait while we record your response.' : (form.settings?.presentation?.confirmationMessage || "Your response has been recorded.")}
           </p>
 
-          {submitted && !form.settings?.responses?.limitOnePerUser && (
+              {submitted && !form.settings?.responses?.limitOnePerUser && form.settings?.presentation?.showSubmitAnotherResponse !== false && (
             <motion.button 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -745,6 +959,7 @@ function FormViewer() {
                 const initialAnswers = {};
                 questions.forEach(q => initialAnswers[q.id] = q.type === 'checkboxes' ? [] : '');
                 setAnswers(initialAnswers);
+                setUploadedFileNames({});
                 setIsConfirmed(false);
               }} 
               style={{ marginTop: 'var(--space-8)' }}
@@ -780,6 +995,8 @@ function FormViewer() {
               let displayAnswer = answer;
               if (answer instanceof File) {
                 displayAnswer = answer.name;
+              } else if (q.type === 'file_upload' && uploadedFileNames[q.id]) {
+                displayAnswer = uploadedFileNames[q.id];
               } else if (Array.isArray(answer)) {
                 displayAnswer = answer.join(', ');
               } else if (answer === undefined || answer === null || answer === '') {
@@ -858,6 +1075,11 @@ function FormViewer() {
   return (
     <div className="form-viewer-container animate-fade-in" style={{ ...containerStyle, padding: 'var(--space-4) var(--space-4) var(--space-16) var(--space-4)', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
       
+      {form.settings?.timeLimit?.enabled && timeLeft !== null && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--error-500)', color: 'white', padding: 'var(--space-3)', textAlign: 'center', fontWeight: 'bold', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)' }}>
+          Time Remaining: {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+        </div>
+      )}
       {form.settings?.presentation?.showProgressBar && (
         <div style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: 'var(--bg-app)', padding: 'var(--space-4) 0', marginBottom: 'var(--space-2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
@@ -926,7 +1148,9 @@ function FormViewer() {
           </div>
         )}
 
-        {questions.map((q, index) => (
+        {questions.map((q, index) => {
+          if (form.settings?.presentation?.focusMode && index !== focusIndex) return null;
+          return (
           <motion.div
             key={q.id}
             id={`question-${q.id}`}
@@ -939,8 +1163,13 @@ function FormViewer() {
             }}
           >
             <div className="card-body">
-              <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)' }}>
-                {q.title} {q.required && <span style={{ color: 'var(--error-500)' }}>*</span>}
+              <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>{q.title} {q.required && <span style={{ color: 'var(--error-500)' }}>*</span>}</div>
+                {form.settings?.accessibility?.enableVoiceRead && (
+                  <button type="button" onClick={() => readAloud(q.title)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary-500)', flexShrink: 0 }} title="Read question aloud">
+                    <Icon name="volume_up" size={24} />
+                  </button>
+                )}
               </div>
               
               <div>
@@ -953,6 +1182,7 @@ function FormViewer() {
                       placeholder="Your answer"
                       value={answers[q.id] || ''}
                       onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                      onPaste={(e) => { if(form.settings?.proctoring?.antiPaste) { e.preventDefault(); showToast("Pasting is disabled for this form.", "error"); } }}
                     />
                     {/\bid\b/i.test(q.title) && (
                       <button 
@@ -974,6 +1204,7 @@ function FormViewer() {
                     placeholder="Your answer"
                     value={answers[q.id] || ''}
                     onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                    onPaste={(e) => { if(form.settings?.proctoring?.antiPaste) { e.preventDefault(); showToast("Pasting is disabled for this form.", "error"); } }}
                   />
                 )}
                 
@@ -1045,8 +1276,8 @@ function FormViewer() {
                       textAlign: 'center'
                     }} className="hover-border-primary">
                       <Icon name="file_upload" size={20} color="var(--primary-500)" />
-                      <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {answers[q.id] ? (answers[q.id].name || (typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') ? 'File Uploaded' : answers[q.id])) : 'Click to upload a file'}
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                        {answers[q.id] ? (answers[q.id].name || uploadedFileNames[q.id] || (typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') ? 'File Uploaded' : answers[q.id])) : 'Click to upload a file'}
                       </span>
                       <input
                         type="file"
@@ -1075,8 +1306,8 @@ function FormViewer() {
                     )}
                     
                     {typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') && (
-                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--success-600)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                        <Icon name="check" size={16} /> Uploaded successfully
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--success-600)', display: 'flex', alignItems: 'center', gap: 'var(--space-1)', marginTop: 'var(--space-1)' }}>
+                        <Icon name="check" size={16} /> {uploadedFileNames[q.id] ? `${uploadedFileNames[q.id]} uploaded` : 'Uploaded successfully'}
                       </span>
                     )}
                   </div>
@@ -1159,8 +1390,25 @@ function FormViewer() {
               )}
             </div>
           </motion.div>
-        ))}
+        )})}
         </div>
+
+        {form.settings?.presentation?.focusMode && questions.length > 1 && (
+          <div className="flex-between" style={{ marginBottom: 'var(--space-6)' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary" 
+              onClick={() => { setFocusIndex(prev => Math.max(0, prev - 1)); window.scrollTo(0,0); }}
+              disabled={focusIndex === 0}
+            >Previous</button>
+            <button 
+              type="button" 
+              className="btn btn-primary" 
+              onClick={() => { setFocusIndex(prev => Math.min(questions.length - 1, prev + 1)); window.scrollTo(0,0); }}
+              disabled={focusIndex === questions.length - 1}
+            >Next</button>
+          </div>
+        )}
 
         <div className="flex-between" style={{ marginTop: 'var(--space-8)' }}>
           <button type="button" className="btn btn-ghost" onClick={() => setShowClearConfirm(true)}>

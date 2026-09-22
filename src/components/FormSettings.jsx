@@ -1,12 +1,19 @@
 import React from 'react';
 import Icon from './Icon/Icon';
+import { useToast } from '../contexts/ToastContext';
 
 function FormSettings({ form, updateFormMeta }) {
+  const { showToast } = useToast();
   // Ensure settings object exists to avoid errors on older forms
   const settings = form.settings || {
     responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false, limitResponses: false, expirationDate: "", maxResponses: "", preventDuplicateIds: false },
     privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
-    presentation: { showProgressBar: false, shuffleQuestions: false, confirmationMessage: "Your response has been recorded.", redirectUrl: "" },
+    presentation: { showProgressBar: false, shuffleQuestions: false, showSubmitAnotherResponse: true, confirmationMessage: "Your response has been recorded.", redirectUrl: "", focusMode: false },
+    proctoring: { antiPaste: false, tabSwitchLimit: false, maxTabSwitches: 3, requireWebcamSnapshot: false },
+    gamification: { enableConfetti: false, soundEffects: false, enableBackgroundMusic: false, cursorEffect: 'none' },
+    geofencing: { enabled: false, latitude: '', longitude: '', radiusMeters: 500 },
+    accessibility: { enableVoiceRead: false },
+    timeLimit: { enabled: false, durationMinutes: 10 },
     coverScreen: { enabled: false, title: "", description: "", buttonText: "Start", icon: "form", animation: "fade-up", backgroundColor: "#ffffff", textColor: "#1f2937", buttonColor: "#3b82f6", fontFamily: "Inter" }
   };
 
@@ -14,7 +21,7 @@ function FormSettings({ form, updateFormMeta }) {
     const updatedSettings = {
       ...settings,
       [category]: {
-        ...settings[category],
+        ...(settings[category] || {}),
         [key]: value
       }
     };
@@ -157,6 +164,12 @@ function FormSettings({ form, updateFormMeta }) {
             checked={settings.privacy.anonymousResponses} 
             onChange={(v) => updateSetting('privacy', 'anonymousResponses', v)} 
           />
+          <SettingToggle 
+            label="Show respondent identity" 
+            description="Display the respondent's identity when viewing responses."
+            checked={settings.privacy.showRespondentIdentity || false} 
+            onChange={(v) => updateSetting('privacy', 'showRespondentIdentity', v)} 
+          />
         </div>
       </div>
 
@@ -171,6 +184,12 @@ function FormSettings({ form, updateFormMeta }) {
         </div>
         <div className="card-body" style={{ paddingTop: 0 }}>
           <SettingToggle 
+            label="Focus Mode (One-by-one)" 
+            description="Display one question at a time to reduce respondent distraction."
+            checked={settings.presentation?.focusMode || false} 
+            onChange={(v) => updateSetting('presentation', 'focusMode', v)} 
+          />
+          <SettingToggle 
             label="Show progress bar" 
             description="Help respondents see how much of the form they have completed."
             checked={settings.presentation.showProgressBar} 
@@ -182,7 +201,25 @@ function FormSettings({ form, updateFormMeta }) {
             checked={settings.presentation.shuffleQuestions} 
             onChange={(v) => updateSetting('presentation', 'shuffleQuestions', v)} 
           />
+          <SettingToggle 
+            label="Show link to submit another response" 
+            description="Allow respondents to submit the form multiple times."
+            checked={settings.presentation.showSubmitAnotherResponse ?? true} 
+            onChange={(v) => updateSetting('presentation', 'showSubmitAnotherResponse', v)} 
+          />
           
+          <div style={{ padding: 'var(--space-4) 0', borderBottom: '1px solid var(--border-color)' }}>
+            <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Redirect URL</p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Redirect respondents to this URL after submitting.</p>
+            <input 
+              type="url"
+              className="input-field" 
+              value={settings.presentation.redirectUrl || ""}
+              onChange={(e) => updateSetting('presentation', 'redirectUrl', e.target.value)}
+              placeholder="https://example.com"
+            />
+          </div>
+
           <div style={{ padding: 'var(--space-4) 0', borderBottom: '1px solid var(--border-color)' }}>
             <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Confirmation message</p>
             <textarea 
@@ -193,6 +230,263 @@ function FormSettings({ form, updateFormMeta }) {
               placeholder="Your response has been recorded."
             />
           </div>
+        </div>
+      </div>
+
+      {/* Security & Proctoring */}
+      <div className="card">
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="lock" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Proctoring & Security</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Prevent cheating and enforce testing conditions.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingToggle 
+            label="Anti-Paste" 
+            description="Prevent respondents from copying and pasting answers into text fields."
+            checked={settings.proctoring?.antiPaste || false} 
+            onChange={(v) => updateSetting('proctoring', 'antiPaste', v)} 
+          />
+          <SettingToggle 
+            label="Tab Switch Limit" 
+            description="Warn respondents or submit the form if they switch browser tabs."
+            checked={settings.proctoring?.tabSwitchLimit || false} 
+            onChange={(v) => updateSetting('proctoring', 'tabSwitchLimit', v)} 
+          />
+          {settings.proctoring?.tabSwitchLimit && (
+             <div style={{ marginLeft: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', border: '1px solid var(--border-color)', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Maximum Tab Switches Allowed</p>
+                <input 
+                  type="number"
+                  min="1"
+                  className="input-field" 
+                  value={settings.proctoring?.maxTabSwitches || 3}
+                  onChange={(e) => updateSetting('proctoring', 'maxTabSwitches', parseInt(e.target.value) || 3)}
+                  onWheel={(e) => e.target.blur()}
+                />
+              </div>
+            </div>
+          )}
+          <SettingToggle 
+            label="Webcam Snapshot on Submit" 
+            description="Take a photo of the respondent when they submit the form to verify identity."
+            checked={settings.proctoring?.requireWebcamSnapshot || false} 
+            onChange={(v) => updateSetting('proctoring', 'requireWebcamSnapshot', v)} 
+          />
+        </div>
+      </div>
+
+      {/* Geofencing */}
+      <div className="card">
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="location" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Geofencing (Location Restriction)</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Only allow responses from a specific physical location.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingToggle 
+            label="Enable Geofencing" 
+            description="Require the respondent to be within a specific radius of a location."
+            checked={settings.geofencing?.enabled || false} 
+            onChange={(v) => updateSetting('geofencing', 'enabled', v)} 
+          />
+          {settings.geofencing?.enabled && (
+             <div style={{ marginLeft: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', border: '1px solid var(--border-color)', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Latitude</p>
+                <input 
+                  type="number"
+                  step="any"
+                  className="input-field" 
+                  placeholder="e.g. 37.7749"
+                  value={settings.geofencing?.latitude || ''}
+                  onChange={(e) => updateSetting('geofencing', 'latitude', e.target.value)}
+                />
+              </div>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Longitude</p>
+                <input 
+                  type="number"
+                  step="any"
+                  className="input-field" 
+                  placeholder="e.g. -122.4194"
+                  value={settings.geofencing?.longitude || ''}
+                  onChange={(e) => updateSetting('geofencing', 'longitude', e.target.value)}
+                />
+              </div>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Radius (in meters)</p>
+                <input 
+                  type="number"
+                  min="1"
+                  className="input-field" 
+                  value={settings.geofencing?.radiusMeters || 500}
+                  onChange={(e) => updateSetting('geofencing', 'radiusMeters', parseInt(e.target.value) || 500)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Gamification & Engagement */}
+      <div className="card">
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="star" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Gamification & Interactivity</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Make your form more fun and engaging.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingToggle 
+            label="Confetti on Submit" 
+            description="Celebrate successful submissions with a confetti burst."
+            checked={settings.gamification?.enableConfetti || false} 
+            onChange={(v) => updateSetting('gamification', 'enableConfetti', v)} 
+          />
+          <SettingToggle 
+            label="Satisfying Sound Effects" 
+            description="Play subtle sound effects when selecting options."
+            checked={settings.gamification?.soundEffects || false} 
+            onChange={(v) => updateSetting('gamification', 'soundEffects', v)} 
+          />
+          <SettingToggle 
+            label="Ambient Background Music" 
+            description="Play soft lofi focus music in the background."
+            checked={settings.gamification?.enableBackgroundMusic || false} 
+            onChange={(v) => updateSetting('gamification', 'enableBackgroundMusic', v)} 
+          />
+          <div style={{ padding: 'var(--space-4) 0', borderBottom: '1px solid var(--border-color)' }}>
+            <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Custom Cursor Trail</p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>Add a playful, interactive canvas effect that follows the cursor.</p>
+            <select 
+              className="input-field" 
+              value={settings.gamification?.cursorEffect || 'none'}
+              onChange={(e) => updateSetting('gamification', 'cursorEffect', e.target.value)}
+            >
+              <option value="none">None</option>
+              <option value="sparkles">Sparkles ✨</option>
+              <option value="bubbles">Bubbles 🫧</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Time Limits */}
+      <div className="card">
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="clock" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Time Constraint (Speedrun Mode)</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Set a countdown timer for completing the form.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingToggle 
+            label="Enable Time Limit" 
+            description="Form will automatically submit when time is up."
+            checked={settings.timeLimit?.enabled || false} 
+            onChange={(v) => updateSetting('timeLimit', 'enabled', v)} 
+          />
+          {settings.timeLimit?.enabled && (
+             <div style={{ marginLeft: 'var(--space-6)', padding: 'var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', border: '1px solid var(--border-color)', borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+              <div>
+                <p style={{ fontWeight: 'var(--font-weight-medium)', color: 'var(--text-primary)', marginBottom: 'var(--space-2)' }}>Duration (in minutes)</p>
+                <input 
+                  type="number"
+                  min="1"
+                  className="input-field" 
+                  value={settings.timeLimit?.durationMinutes || 10}
+                  onChange={(e) => updateSetting('timeLimit', 'durationMinutes', parseInt(e.target.value) || 1)}
+                  onWheel={(e) => e.target.blur()}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Accessibility */}
+      <div className="card">
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="view" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Accessibility</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Make the form accessible to all users.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingToggle 
+            label="Enable Read Aloud" 
+            description="Add a button to read questions aloud using Text-to-Speech."
+            checked={settings.accessibility?.enableVoiceRead || false} 
+            onChange={(v) => updateSetting('accessibility', 'enableVoiceRead', v)} 
+          />
+        </div>
+      </div>
+
+      {/* Share Template */}
+      <div className="card" style={{ opacity: form.publishedAt ? 1 : 0.7 }}>
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ color: 'var(--primary-600)' }}><Icon name="link" size={24} /></div>
+            <h2 style={{ fontSize: 'var(--text-xl)' }}>Share Template</h2>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>Share a duplicate of this form with others.</p>
+        </div>
+        <div className="card-body" style={{ paddingTop: 'var(--space-4)', display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          {!form.publishedAt ? (
+            <div style={{ backgroundColor: 'var(--warning-50)', color: 'var(--warning-700)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', width: '100%', display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+              <Icon name="info" size={18} />
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>You must publish this form before you can share it as a template.</p>
+            </div>
+          ) : (
+            <>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                onClick={() => {
+                  const importUrl = `${window.location.origin}/import/${form.id}`;
+                  navigator.clipboard.writeText(importUrl)
+                    .then(() => showToast('Template link copied to clipboard!', 'success'))
+                    .catch(() => showToast('Failed to copy link', 'error'));
+                }}
+              >
+                <Icon name="link" size={18} /> Copy Share Link
+              </button>
+              
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                onClick={() => {
+                  const exportData = {
+                    title: form.title,
+                    description: form.description,
+                    questions: form.questions,
+                    settings: form.settings,
+                  };
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+                  const downloadAnchorNode = document.createElement('a');
+                  downloadAnchorNode.setAttribute("href", dataStr);
+                  downloadAnchorNode.setAttribute("download", `${form.title.replace(/\s+/g, '_')}_Template.json`);
+                  document.body.appendChild(downloadAnchorNode);
+                  downloadAnchorNode.click();
+                  downloadAnchorNode.remove();
+                  showToast('Form template exported!', 'success');
+                }}
+              >
+                <Icon name="download" size={18} /> Download JSON
+              </button>
+            </>
+          )}
         </div>
       </div>
 

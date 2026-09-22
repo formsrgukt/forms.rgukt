@@ -1,7 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import TopNav from './TopNav';
 import './Layout.css';
 
 function Layout({ children }) {
@@ -11,8 +10,7 @@ function Layout({ children }) {
     <div className="app-layout">
       <Sidebar />
       <div className="app-main">
-        {!isFormEditor && <TopNav />}
-        <main className="app-content" style={isFormEditor ? { paddingTop: 0 } : {}}>
+        <main className="app-content" style={{ paddingTop: 'var(--space-6)' }}>
           <div className="content-container">
             {children}
           </div>

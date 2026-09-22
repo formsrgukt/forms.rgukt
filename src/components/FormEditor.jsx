@@ -12,8 +12,10 @@ import CustomDropdown from './CustomDropdown';
 import Loader from './Loader';
 import CoverScreenModal from './CoverScreenModal';
 import { loadGoogleFont } from '../utils/fontLoader';
-import { getForm, saveForm, getResponses, deleteResponse } from '../services/db';
+import { getForm, saveForm, deleteForm, getResponses, subscribeToResponses, deleteResponse } from '../services/db';
 import { useToast } from '../contexts/ToastContext';
+import * as XLSX from 'xlsx';
+import html2pdf from 'html2pdf.js';
 
 const QUESTION_TYPE_OPTIONS = [
   { value: 'short_answer', label: 'Short answer', icon: 'short_answer' },
@@ -62,8 +64,11 @@ function FormEditor() {
   const [responseToDelete, setResponseToDelete] = useState(null);
   const [deletingResponseId, setDeletingResponseId] = useState(null);
   const [showCoverModal, setShowCoverModal] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [hasChangesToPublish, setHasChangesToPublish] = useState(false);
   const [publishStatus, setPublishStatus] = useState('idle');
+  const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
+  const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
   const initialLoadRef = useRef(false);
   const isPublishingRef = useRef(false);
 
@@ -97,13 +102,12 @@ function FormEditor() {
 
   useEffect(() => {
     if (formId) {
-      const fetchFormResponses = async () => {
-        if (activeTab === 'responses') setLoadingResponses(true);
-        const fetchedResponses = await getResponses(formId);
+      if (activeTab === 'responses') setLoadingResponses(true);
+      const unsubscribe = subscribeToResponses(formId, (fetchedResponses) => {
         setResponses(fetchedResponses);
         if (activeTab === 'responses') setLoadingResponses(false);
-      };
-      fetchFormResponses();
+      });
+      return () => unsubscribe();
     }
   }, [formId, activeTab]);
 
@@ -136,17 +140,31 @@ function FormEditor() {
   };
 
   const handlePublishClick = async () => {
-    if (!form.publishedAt || hasChangesToPublish) {
-      const isInitialPublish = !form.publishedAt;
+    if (!form.publishedAt || hasChangesToPublish || form.isImported) {
+      const isInitialPublish = !form.publishedAt || form.isImported;
       isPublishingRef.current = true;
       setPublishStatus('publishing');
       setSaveStatus('saving');
       
       try {
         const now = Date.now();
-        const updatedForm = { ...form, publishedAt: now, updatedAt: now };
-        await saveForm(updatedForm);
-        setForm(updatedForm);
+        let updatedForm = { ...form, publishedAt: now, updatedAt: now };
+
+        if (updatedForm.isImported) {
+          const newFormId = uuidv4();
+          updatedForm = { ...updatedForm, id: newFormId, isImported: false };
+          await saveForm(updatedForm);
+          await deleteForm(form.id); // Delete the temporary imported draft
+          
+          showToast('Form Published Successfully!');
+          // We must navigate since the ID changed. The user can share from the new URL.
+          navigate(`/edit/${newFormId}`, { replace: true });
+          return; // Exit early since component will unmount
+        } else {
+          await saveForm(updatedForm);
+          setForm(updatedForm);
+        }
+
         setHasChangesToPublish(false);
         setPublishStatus('idle');
         setSaveStatus('saved');
@@ -179,10 +197,218 @@ function FormEditor() {
     });
   };
 
-  const addQuestion = () => {
+  const exportToExcel = () => {
+    setShowExportDropdown(false);
+    if (responses.length === 0) return showToast('No responses to export', 'warning');
+    
+    const headers = ['Timestamp'];
+    if (form.settings?.privacy?.collectEmail) headers.push('Email');
+    form.questions.forEach(q => headers.push(q.title || 'Untitled Question'));
+    
+    const rows = responses.map(response => {
+      const row = [new Date(response.submittedAt).toLocaleString()];
+      if (form.settings?.privacy?.collectEmail) row.push(response.email || '');
+      form.questions.forEach(q => {
+        let answer = response.answers?.[q.id] || '';
+        if (Array.isArray(answer)) answer = answer.join(', ');
+        row.push(answer);
+      });
+      return row;
+    });
+    
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Responses");
+    XLSX.writeFile(workbook, `${form.title.replace(/\s+/g, '_')}_Responses.xlsx`);
+    showToast('Exported to Excel', 'success');
+  };
+
+  const exportToPDF = () => {
+    setShowExportDropdown(false);
+    if (responses.length === 0) return showToast('No responses to export', 'warning');
+    
+    const headers = ['Timestamp'];
+    if (form.settings?.privacy?.collectEmail) headers.push('Email');
+    form.questions.forEach(q => headers.push(q.title || 'Untitled Question'));
+    
+    const rows = responses.map(response => {
+      const row = [new Date(response.submittedAt).toLocaleString()];
+      if (form.settings?.privacy?.collectEmail) row.push(response.email || '');
+      form.questions.forEach(q => {
+        let answer = response.answers?.[q.id] || '';
+        if (Array.isArray(answer)) answer = answer.join(', ');
+        row.push(answer);
+      });
+      return row;
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${form.title} - Responses</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+          <style>
+            :root {
+              --primary: #4f46e5;
+              --primary-light: #e0e7ff;
+              --text-main: #111827;
+              --text-muted: #6b7280;
+              --border: #e5e7eb;
+              --bg-alt: #f9fafb;
+            }
+            
+            @page {
+              margin: 0;
+              size: A4 portrait;
+            }
+            
+            body { 
+              font-family: 'Inter', sans-serif; 
+              color: var(--text-main);
+              margin: 20mm;
+              padding: 0;
+              line-height: 1.5;
+              background-color: #fff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+
+            .header {
+              border-bottom: 2px solid var(--primary);
+              padding-bottom: 24px;
+              margin-bottom: 32px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+            }
+
+            .header-content h1 { 
+              margin: 0 0 8px 0; 
+              font-size: 28px; 
+              font-weight: 700;
+              color: var(--text-main);
+              letter-spacing: -0.02em;
+            }
+            
+            .header-meta {
+              font-size: 14px;
+              color: var(--text-muted);
+              font-weight: 500;
+            }
+            
+            .stat-badge {
+              background-color: var(--primary-light);
+              color: var(--primary);
+              padding: 6px 12px;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 14px;
+            }
+
+            .table-container {
+              border: 1px solid var(--border);
+              border-radius: 8px;
+              overflow: hidden;
+            }
+
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              text-align: left;
+            }
+            
+            th { 
+              background-color: var(--bg-alt);
+              color: var(--text-muted);
+              font-weight: 600;
+              font-size: 13px;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              padding: 14px 16px;
+              border-bottom: 1px solid var(--border);
+            }
+            
+            td { 
+              padding: 14px 16px; 
+              font-size: 14px;
+              border-bottom: 1px solid var(--border);
+              color: var(--text-main);
+            }
+            
+            tbody tr:last-child td {
+              border-bottom: none;
+            }
+
+            tbody tr:nth-child(even) {
+              background-color: #fcfcfd;
+            }
+            
+            .footer {
+              margin-top: 40px;
+              padding-top: 16px;
+              border-top: 1px solid var(--border);
+              text-align: center;
+              font-size: 12px;
+              color: var(--text-muted);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-content">
+              <h1>${form.title || 'Untitled Form'}</h1>
+              <div class="header-meta">Generated on ${new Date().toLocaleString()}</div>
+            </div>
+            <div class="stat-badge">
+              ${responses.length} ${responses.length === 1 ? 'Response' : 'Responses'}
+            </div>
+          </div>
+          
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+              </thead>
+              <tbody>
+                ${rows.map(row => `<tr>${row.map(cell => `<td>${cell || '<span style="color: #9ca3af; font-style: italic;">Empty</span>'}</td>`).join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="footer">
+            Generated securely by RGUKT Forms • All rights reserved
+          </div>
+        </body>
+      </html>
+    `;
+
+    setPdfPreviewHtml(htmlContent);
+    setShowPdfPreviewModal(true);
+  };
+
+  const confirmDownloadPDF = () => {
+    const opt = {
+      margin:       0,
+      filename:     `${form.title || 'Form'}_Responses.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    showToast('Preparing PDF download...', 'success');
+    html2pdf().set(opt).from(pdfPreviewHtml).save().then(() => {
+      setShowPdfPreviewModal(false);
+    });
+  };
+
+  const addQuestion = (type = 'multiple_choice') => {
     const newQuestion = {
       id: uuidv4(),
-      type: 'multiple_choice',
+      type: type,
       title: '',
       options: ['Option 1'],
       required: false
@@ -444,18 +670,30 @@ function FormEditor() {
                     <h3 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>{responses.length} {responses.length === 1 ? 'response' : 'responses'}</h3>
                     <p style={{ color: 'var(--text-secondary)' }}>Latest responses to your form.</p>
                   </div>
-                  <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
-                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }}>
-                      <Icon name="search" size={18} />
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
+                      <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }}>
+                        <Icon name="search" size={18} />
+                      </div>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        style={{ paddingLeft: '38px', width: '100%' }}
+                        placeholder="Search across all responses..." 
+                        value={responseSearchTerm}
+                        onChange={(e) => setResponseSearchTerm(e.target.value)}
+                      />
                     </div>
-                    <input 
-                      type="text" 
-                      className="input-field" 
-                      style={{ paddingLeft: '38px', width: '100%' }}
-                      placeholder="Search across all responses..." 
-                      value={responseSearchTerm}
-                      onChange={(e) => setResponseSearchTerm(e.target.value)}
-                    />
+                    
+                    <div style={{ position: 'relative' }}>
+                      <button 
+                        className="btn btn-secondary"
+                        onClick={() => setShowExportDropdown(true)}
+                        disabled={responses.length === 0}
+                      >
+                        <Icon name="download" size={18} /> Export
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -487,7 +725,11 @@ function FormEditor() {
                       </tr>
                     ) : (
                       filteredResponses.map((response) => (
-                        <tr key={response.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color var(--transition-fast)' }} className="dashboard-table-row">
+                        <tr 
+                          key={response.id} 
+                          style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color var(--transition-fast)' }} 
+                          className={`dashboard-table-row ${Date.now() - response.submittedAt < 5000 ? 'new-response-row' : ''}`}
+                        >
                           <td style={{ padding: 'var(--space-4) var(--space-5)', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
                           {new Date(response.submittedAt).toLocaleString()}
                         </td>
@@ -499,12 +741,30 @@ function FormEditor() {
                         {form.questions.map(q => {
                           const answer = response.answers?.[q.id];
                           let displayAnswer = answer;
-                          if (typeof answer === 'string' && answer.startsWith('https://drive.google.com/file/d/')) {
+                          if (typeof answer === 'string' && (answer.startsWith('https://drive.google.com/file/d/') || answer.startsWith('https://docs.google.com/'))) {
                             displayAnswer = (
                               <button 
                                 className="btn btn-secondary" 
                                 style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
-                                onClick={() => setViewingFile(answer.replace('/view', '/preview'))}
+                                onClick={() => {
+                                  let previewUrl = answer;
+                                  try {
+                                    let match = answer.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                                    if (match && match[1]) {
+                                      previewUrl = `https://drive.google.com/file/d/${match[1]}/preview`;
+                                    } else {
+                                      match = answer.match(/docs\.google\.com\/(document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/);
+                                      if (match && match[1] && match[2]) {
+                                        previewUrl = `https://docs.google.com/${match[1]}/d/${match[2]}/preview`;
+                                      } else {
+                                        previewUrl = answer.replace(/\/view(\?.*)?$/, '/preview').replace(/\/edit(\?.*)?$/, '/preview');
+                                      }
+                                    }
+                                  } catch (e) {
+                                    previewUrl = answer.replace('/view', '/preview').replace('/edit', '/preview');
+                                  }
+                                  setViewingFile({ url: previewUrl, original: answer });
+                                }}
                               >
                                 <Icon name="external-link" size={14} /> View File
                               </button>
@@ -895,20 +1155,111 @@ function FormEditor() {
       )}
 
       {viewingFile && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
-          <div className="card animate-fade-in" style={{ width: '90%', height: '90%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-app)', padding: 0, overflow: 'hidden' }}>
-            <div className="flex-between" style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--gray-50)' }}>
-              <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>File Viewer</h3>
-              <button className="btn-icon" onClick={() => setViewingFile(null)}>
-                <Icon name="close" size={24} />
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(8px)' }}>
+          <div className="animate-fade-in" style={{ width: '95%', maxWidth: '1400px', height: '92%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff', padding: 0, overflow: 'hidden', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.1)' }}>
+            <div className="flex-between" style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--gray-200)', backgroundColor: '#ffffff', zIndex: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div style={{ padding: '8px', backgroundColor: 'var(--primary-50)', borderRadius: '10px', color: 'var(--primary-600)' }}>
+                  <Icon name="presentation" size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: '600', color: 'var(--gray-900)' }}>File Preview</h3>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Google Drive securely embeds this file</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+                <a 
+                  href={viewingFile.original} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn" 
+                  style={{ padding: '8px 16px', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--primary-50)', color: 'var(--primary-700)', border: '1px solid var(--primary-100)', borderRadius: '8px', fontWeight: '500', transition: 'all 0.2s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--primary-100)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--primary-50)'; e.currentTarget.style.transform = 'none'; }}
+                >
+                  <Icon name="external-link" size={16} />
+                  Open in New Tab
+                </a>
+                <button 
+                  className="btn-icon" 
+                  onClick={() => setViewingFile(null)}
+                  style={{ backgroundColor: 'var(--gray-100)', color: 'var(--gray-600)', padding: '8px', borderRadius: '8px', transition: 'all 0.2s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--gray-200)'; e.currentTarget.style.color = 'var(--error-600)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--gray-100)'; e.currentTarget.style.color = 'var(--gray-600)'; }}
+                >
+                  <Icon name="close" size={20} />
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, backgroundColor: '#f8f9fa', position: 'relative' }}>
+              <iframe 
+                src={viewingFile.url} 
+                style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0 }}
+                title="File Viewer"
+                allow="autoplay; camera; microphone; fullscreen; picture-in-picture"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Export Modal */}
+      {showExportDropdown && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 'var(--space-4)' }} onClick={() => setShowExportDropdown(false)}>
+          <div className="card animate-pop-in" style={{ width: '100%', maxWidth: '500px', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>Export Responses</h3>
+              <button className="btn-icon" onClick={() => setShowExportDropdown(false)}><Icon name="close" size={20} /></button>
+            </div>
+            
+            <div style={{ padding: 'var(--space-6)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+              <button className="card" style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', transition: 'all 0.2s' }} onClick={exportToExcel} onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-500)'; e.currentTarget.style.backgroundColor = 'var(--primary-50)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.backgroundColor = 'var(--bg-surface)'; }}>
+                <img src="/excel-icon.png" alt="Excel" style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 'var(--font-weight-medium)' }}>Excel Document</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>.xlsx format</span>
+                </div>
+              </button>
+
+              <button className="card" style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', transition: 'all 0.2s' }} onClick={exportToPDF} onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-500)'; e.currentTarget.style.backgroundColor = 'var(--primary-50)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.backgroundColor = 'var(--bg-surface)'; }}>
+                <img src="/pdf-icon.png" alt="PDF" style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 'var(--font-weight-medium)' }}>PDF Document</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Printable format</span>
+                </div>
               </button>
             </div>
-            <div style={{ flex: 1, backgroundColor: '#f0f0f0' }}>
-              <iframe 
-                src={viewingFile} 
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                title="File Viewer"
-              />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* PDF Preview Modal */}
+      {showPdfPreviewModal && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 'var(--space-6)' }} onClick={() => setShowPdfPreviewModal(false)}>
+          <div className="card animate-pop-in" style={{ width: '100%', maxWidth: '900px', height: '90vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-surface)' }}>
+              <div>
+                <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>PDF Preview</h3>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Verify how your responses will look before downloading.</p>
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                <button className="btn btn-secondary" onClick={() => setShowPdfPreviewModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={confirmDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <Icon name="download" size={18} /> Confirm Download
+                </button>
+              </div>
+            </div>
+            
+            <div style={{ flex: 1, backgroundColor: '#f1f5f9', padding: 'var(--space-6)', overflowY: 'auto', display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: '210mm', minHeight: '297mm', backgroundColor: 'white', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', overflow: 'hidden' }}>
+                <iframe 
+                  srcDoc={pdfPreviewHtml} 
+                  style={{ width: '100%', height: '100%', minHeight: '297mm', border: 'none' }}
+                  title="PDF Preview"
+                />
+              </div>
             </div>
           </div>
         </div>,

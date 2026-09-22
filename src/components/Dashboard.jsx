@@ -74,11 +74,12 @@ function Dashboard() {
     <div className="dashboard-container animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       
       {/* Header section */}
-      <div className="flex-between">
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-1)' }}>Welcome back, Admin</h1>
+      <div className="flex-between" style={{ flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+        <div style={{ flex: '1 1 auto', minWidth: '200px' }}>
+          <h1 style={{ fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-1)' }}>Welcome back, {currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'User')}</h1>
           <p style={{ color: 'var(--text-secondary)' }}>Here is what's happening with your forms today.</p>
         </div>
+
         <button className="btn btn-primary" onClick={createNewForm} disabled={creating} style={{ opacity: creating ? 0.7 : 1 }}>
           <Icon name="add" size={18} /> {creating ? 'Creating...' : 'Create Form'}
         </button>

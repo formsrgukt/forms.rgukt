@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import Icon from './Icon/Icon';
 import { v4 as uuidv4 } from 'uuid';
 import { saveForm } from '../services/db';
+import { useAuth } from '../contexts/AuthContext';
 
 function Templates() {
+  const { userProfile } = useAuth();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
@@ -424,7 +426,9 @@ function Templates() {
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)' }}>{creating ? 'Creating...' : 'Blank Form'}</h3>
         </div>
 
-        {/* RGUKT Students Template */}
+        {userProfile?.isRguktian !== false && (
+          <>
+            {/* RGUKT Students Template */}
         <div 
           className="card card-hover" 
           style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', cursor: 'pointer', position: 'relative' }}
@@ -514,6 +518,8 @@ function Templates() {
           <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', marginBottom: 'var(--space-1)' }}>Complaint / Grievance</h3>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Template</p>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

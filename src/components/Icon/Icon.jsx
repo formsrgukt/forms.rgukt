@@ -57,6 +57,15 @@ const iconMap = {
   'bar-chart': LucideIcons.BarChart3,
   'loader': LucideIcons.Loader2,
   'logout': LucideIcons.LogOut,
+  'excel': LucideIcons.FileSpreadsheet,
+  'pdf': LucideIcons.FileText,
+  'csv': LucideIcons.Table,
+  'json': LucideIcons.Code,
+  'warning': LucideIcons.AlertTriangle,
+  'alert': LucideIcons.AlertCircle,
+  'location': LucideIcons.MapPin,
+  'view': LucideIcons.Eye,
+  'info': LucideIcons.Info,
 
   // Question Types
   'short_answer': LucideIcons.Type,

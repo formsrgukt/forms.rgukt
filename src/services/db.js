@@ -1,8 +1,9 @@
-import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, addDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const FORMS_COLLECTION = 'forms';
 const RESPONSES_COLLECTION = 'responses';
+const USERS_COLLECTION = 'users';
 
 // In-memory cache for lightning-fast loads
 let formsCache = null;
@@ -146,6 +147,18 @@ export const getAllResponses = async (forceRefresh = false) => {
   }
 };
 
+export const subscribeToResponses = (formId, callback) => {
+  const q = query(collection(db, RESPONSES_COLLECTION), orderBy('submittedAt', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    const allResponses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    responsesCache = allResponses;
+    const filtered = allResponses.filter(r => r.formId === formId);
+    callback(filtered);
+  }, (error) => {
+    console.error("Error subscribing to responses: ", error);
+  });
+};
+
 export const getStudentById = async (studentId) => {
   if (!studentId) return null;
   try {
@@ -156,7 +169,61 @@ export const getStudentById = async (studentId) => {
     }
     return null;
   } catch (error) {
-    console.error("Error getting student:", error);
     return null;
+  }
+};
+
+export const getUserProfile = async (uid) => {
+  if (!uid) return null;
+  try {
+    const docRef = doc(db, USERS_COLLECTION, uid);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting user profile:", error);
+    return null;
+  }
+};
+
+export const saveUserProfile = async (uid, profileData) => {
+  if (!uid) return null;
+  try {
+    const docRef = doc(db, USERS_COLLECTION, uid);
+    await setDoc(docRef, profileData, { merge: true });
+    return profileData;
+  } catch (error) {
+    console.error("Error saving user profile:", error);
+    throw error;
+  }
+};
+
+export const deleteUserAccountAndData = async (uid, onProgress) => {
+  if (!uid) return;
+  try {
+    if (onProgress) onProgress('Gathering data...');
+    // 1. Delete all forms created by this user
+    const q = query(collection(db, FORMS_COLLECTION));
+    const querySnapshot = await getDocs(q);
+    const formsToDelete = querySnapshot.docs.filter(doc => doc.data().userId === uid);
+    
+    if (onProgress) onProgress(`Deleting ${formsToDelete.length} form(s)...`);
+    // We run the deletions in parallel
+    await Promise.all(formsToDelete.map(formDoc => deleteDoc(doc(db, FORMS_COLLECTION, formDoc.id))));
+    
+    if (onProgress) onProgress('Removing user profile...');
+    // 2. Delete the user profile
+    await deleteDoc(doc(db, USERS_COLLECTION, uid));
+    
+    // Note: We don't delete responses here as it would require querying all responses 
+    // for all deleted forms. For now, wiping the forms and user record is sufficient 
+    // for standard account deletion.
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting user data:", error);
+    throw error;
   }
 };
