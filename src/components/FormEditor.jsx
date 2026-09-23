@@ -75,6 +75,37 @@ function FormEditor() {
   const isPublishingRef = useRef(false);
 
   const [form, setForm, { undo, redo, canUndo, canRedo }] = useUndo(null);
+  const [editorCurrentPage, setEditorCurrentPage] = useState(0);
+
+  const pages = React.useMemo(() => {
+    if (!form || !form.questions || form.questions.length === 0) return [];
+    const result = [];
+    let currentPage = [];
+    form.questions.forEach(q => {
+      if (q.type === 'page_break') {
+        if (currentPage.length > 0) result.push(currentPage);
+        currentPage = [q];
+      } else {
+        currentPage.push(q);
+      }
+    });
+    if (currentPage.length > 0) result.push(currentPage);
+    return result;
+  }, [form?.questions]);
+
+  useEffect(() => {
+    if (pages.length > 0 && editorCurrentPage >= pages.length) {
+      setEditorCurrentPage(Math.max(0, pages.length - 1));
+    }
+  }, [pages.length, editorCurrentPage]);
+
+  const currentPageStartIndex = React.useMemo(() => {
+    let index = 0;
+    for (let i = 0; i < editorCurrentPage; i++) {
+      if (pages[i]) index += pages[i].length;
+    }
+    return index;
+  }, [pages, editorCurrentPage]);
 
   useEffect(() => {
     if (!initialLoadRef.current) {
@@ -428,7 +459,7 @@ function FormEditor() {
     const newQuestion = {
       id: uuidv4(),
       type: type,
-      title: '',
+      title: type === 'page_break' ? 'Page Title' : '',
       options: ['Option 1'],
       required: false
     };
@@ -443,7 +474,15 @@ function FormEditor() {
     
     setForm({ ...form, questions: newQuestions });
     setActiveQuestion(newQuestion.id);
-    showToast('Question added');
+    
+    if (type === 'page_break') {
+      setTimeout(() => {
+        setEditorCurrentPage(prev => prev + 1);
+      }, 0);
+      showToast('New page added');
+    } else {
+      showToast('Question added');
+    }
   };
 
   const addPredefinedQuestion = (presetType) => {
@@ -526,9 +565,11 @@ function FormEditor() {
 
   const handleDragEnd = (result) => {
     if (!result.destination) return;
+    const globalSourceIndex = currentPageStartIndex + result.source.index;
+    const globalDestIndex = currentPageStartIndex + result.destination.index;
     const items = Array.from(form.questions);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
+    const [reorderedItem] = items.splice(globalSourceIndex, 1);
+    items.splice(globalDestIndex, 0, reorderedItem);
     setForm({ ...form, questions: items });
   };
 
@@ -861,38 +902,73 @@ function FormEditor() {
       {activeTab === 'questions' && (
         <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          {/* Header Card */}
-          <div className="card" style={{ borderTop: '8px solid var(--primary-500)', marginBottom: 'var(--space-6)' }}>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              <input
-                type="text"
-                className="input-field"
-                style={{ fontSize: 'var(--text-3xl)', fontWeight: 'var(--font-weight-bold)', border: 'none', padding: 'var(--space-2) 0', borderBottom: '2px solid transparent', borderRadius: 0 }}
-                value={form.title}
-                onChange={(e) => updateFormMeta('title', e.target.value)}
-                placeholder="Form Title"
-                onFocus={(e) => e.target.style.borderBottomColor = 'var(--primary-500)'}
-                onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
-              />
-              <input
-                type="text"
-                className="input-field"
-                style={{ fontSize: 'var(--text-base)', border: 'none', padding: 'var(--space-2) 0', borderBottom: '1px solid transparent', borderRadius: 0 }}
-                value={form.description}
-                onChange={(e) => updateFormMeta('description', e.target.value)}
-                placeholder="Form Description"
-                onFocus={(e) => e.target.style.borderBottomColor = 'var(--primary-500)'}
-                onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
-              />
+          {/* Page Navigation UI */}
+          {pages.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+              {pages.map((_, i) => (
+                <button
+                  key={i}
+                  className={`btn ${editorCurrentPage === i ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setEditorCurrentPage(i)}
+                  style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-sm)', borderRadius: 'var(--radius-full)' }}
+                >
+                  Page {i + 1}
+                </button>
+              ))}
             </div>
-          </div>
+          )}
+
+          {/* Header Card */}
+          {(() => {
+            const pageHeader = (editorCurrentPage > 0 && pages[editorCurrentPage] && pages[editorCurrentPage][0]?.type === 'page_break') ? pages[editorCurrentPage][0] : null;
+            return (
+              <div className="card" style={{ borderTop: '8px solid var(--primary-500)', marginBottom: 'var(--space-6)' }}>
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  <input
+                    type="text"
+                    className="input-field"
+                    style={{ fontSize: 'var(--text-3xl)', fontWeight: 'var(--font-weight-bold)', border: 'none', padding: 'var(--space-2) 0', borderBottom: '2px solid transparent', borderRadius: 0 }}
+                    value={pageHeader ? pageHeader.title : form.title}
+                    onChange={(e) => {
+                      if (pageHeader) {
+                        updateQuestion(pageHeader.id, 'title', e.target.value);
+                      } else {
+                        updateFormMeta('title', e.target.value);
+                      }
+                    }}
+                    placeholder={pageHeader ? "Page Title" : "Form Title"}
+                    onFocus={(e) => e.target.style.borderBottomColor = 'var(--primary-500)'}
+                    onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
+                  />
+                  <input
+                    type="text"
+                    className="input-field"
+                    style={{ fontSize: 'var(--text-base)', border: 'none', padding: 'var(--space-2) 0', borderBottom: '1px solid transparent', borderRadius: 0 }}
+                    value={pageHeader ? (pageHeader.description || '') : form.description}
+                    onChange={(e) => {
+                      if (pageHeader) {
+                        updateQuestion(pageHeader.id, 'description', e.target.value);
+                      } else {
+                        updateFormMeta('description', e.target.value);
+                      }
+                    }}
+                    placeholder={pageHeader ? "Page Description (optional)" : "Form Description"}
+                    onFocus={(e) => e.target.style.borderBottomColor = 'var(--primary-500)'}
+                    onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Question List via Drag and Drop */}
           <DragDropContext onDragEnd={handleDragEnd}>
             <Droppable droppableId="questions-list">
               {(provided) => (
                 <div {...provided.droppableProps} ref={provided.innerRef}>
-                  {form.questions.map((q, index) => (
+                  {(pages[editorCurrentPage] || []).map((q, index) => {
+                    if (q.type === 'page_break' && index === 0 && editorCurrentPage > 0) return null;
+                    return (
                     <Draggable key={q.id} draggableId={q.id} index={index}>
                       {(provided, snapshot) => (
                         <div
@@ -1130,7 +1206,8 @@ function FormEditor() {
                         </div>
                       )}
                     </Draggable>
-                  ))}
+                    );
+                  })}
                   {provided.placeholder}
                 </div>
               )}
@@ -1168,7 +1245,7 @@ function FormEditor() {
             <button className="btn-icon" title="Add section" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('section_block')}>
               <Icon name="section" size={20} />
             </button>
-            <button className="btn-icon" title="Add page break" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('page_break')}>
+            <button className="btn-icon" title="Add new page" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('page_break')}>
               <Icon name="page_break" size={20} />
             </button>
             <button className="btn-icon" title={form.settings?.coverScreen?.enabled ? "Edit Cover Screen" : "Add Cover Screen"} style={{ color: form.settings?.coverScreen?.enabled ? 'var(--primary-600)' : 'var(--text-secondary)', backgroundColor: form.settings?.coverScreen?.enabled ? 'var(--primary-50)' : 'transparent' }} onClick={() => setShowCoverModal(true)}>
