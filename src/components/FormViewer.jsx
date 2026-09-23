@@ -642,7 +642,11 @@ function FormViewer() {
     }
   };
 
-  const handleNextPage = () => {
+  const handleNextPage = (e) => {
+    if (e && e.preventDefault) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const newErrors = {};
     let isValid = true;
     
@@ -678,11 +682,15 @@ function FormViewer() {
     }
     
     setErrors({});
-    setCurrentPageIndex(prev => prev + 1);
+    setCurrentPageIndex(prev => Math.min(pages.length - 1, prev + 1));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePrevPage = () => {
+  const handlePrevPage = (e) => {
+    if (e && e.preventDefault) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setCurrentPageIndex(prev => Math.max(0, prev - 1));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1420,7 +1428,8 @@ function FormViewer() {
         )}
 
         {(pages[currentPageIndex] || []).map((q, index) => {
-          if (form.settings?.presentation?.focusMode && index !== focusIndex) return null;
+          const isFocusMode = form.settings?.presentation?.focusMode && pages.length <= 1;
+          if (isFocusMode && index !== focusIndex) return null;
           return (
           <motion.div
             key={q.id}
@@ -1690,18 +1699,18 @@ function FormViewer() {
         )})}
         </div>
 
-        {form.settings?.presentation?.focusMode && questions.length > 1 && (
+        {form.settings?.presentation?.focusMode && pages.length <= 1 && questions.length > 1 && (
           <div className="flex-between" style={{ marginBottom: 'var(--space-6)' }}>
             <button 
               type="button" 
               className="btn btn-secondary" 
-              onClick={() => { setFocusIndex(prev => Math.max(0, prev - 1)); window.scrollTo(0,0); }}
+              onClick={() => { setFocusIndex(prev => Math.max(0, prev - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               disabled={focusIndex === 0}
             >Previous</button>
             <button 
               type="button" 
               className="btn btn-primary" 
-              onClick={() => { setFocusIndex(prev => Math.min(questions.length - 1, prev + 1)); window.scrollTo(0,0); }}
+              onClick={() => { setFocusIndex(prev => Math.min(questions.length - 1, prev + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               disabled={focusIndex === questions.length - 1}
             >Next</button>
           </div>
@@ -1715,12 +1724,12 @@ function FormViewer() {
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {currentPageIndex > 0 && (
-              <button type="button" className="btn btn-secondary" onClick={handlePrevPage}>
+              <button type="button" className="btn btn-secondary" onClick={(e) => handlePrevPage(e)}>
                 Back
               </button>
             )}
             {currentPageIndex < pages.length - 1 ? (
-              <button type="button" className="btn btn-primary" onClick={handleNextPage} style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
+              <button type="button" className="btn btn-primary" onClick={(e) => handleNextPage(e)} style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
                 Next
               </button>
             ) : (
