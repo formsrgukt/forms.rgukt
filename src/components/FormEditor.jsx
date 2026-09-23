@@ -748,21 +748,33 @@ function FormEditor() {
                       />
                     </div>
                     
-                    {form.questions.filter(q => ['dropdown', 'multiple_choice'].includes(q.type)).map(q => (
-                      <div key={q.id} style={{ position: 'relative' }}>
-                        <select 
-                          className="input-field" 
-                          style={{ padding: '8px 30px 8px 12px', minWidth: '150px' }}
-                          value={responseFilters[q.id] || ''}
-                          onChange={(e) => setResponseFilters({...responseFilters, [q.id]: e.target.value})}
-                        >
-                          <option value="">All {q.title || 'Options'}</option>
-                          {q.options.map((opt, i) => (
-                            <option key={i} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
+                    {form.questions.map(q => {
+                      // Get unique values from responses for this question
+                      const uniqueValues = [...new Set(responses
+                        .map(r => r.answers && r.answers[q.id])
+                        .filter(val => val !== undefined && val !== null && val !== '')
+                        .map(val => Array.isArray(val) ? val.join(', ') : String(val))
+                      )].sort();
+
+                      // Only show filter if there are actually responses to filter by
+                      if (uniqueValues.length === 0) return null;
+
+                      return (
+                        <div key={q.id} style={{ position: 'relative', flex: '1 1 auto' }}>
+                          <select 
+                            className="input-field" 
+                            style={{ padding: '8px 30px 8px 12px', minWidth: '130px', width: '100%' }}
+                            value={responseFilters[q.id] || ''}
+                            onChange={(e) => setResponseFilters({...responseFilters, [q.id]: e.target.value})}
+                          >
+                            <option value="">All {q.title || 'Options'}</option>
+                            {uniqueValues.map((val, i) => (
+                              <option key={i} value={val}>{val}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
                     
                     <div style={{ position: 'relative' }}>
                       <button 
