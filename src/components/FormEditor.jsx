@@ -1134,48 +1134,14 @@ function FormEditor() {
       {activeTab === 'questions' && (
         <div style={{ position: 'fixed', right: 'var(--space-6)', top: '160px', zIndex: 150 }}>
           <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 'var(--space-2)', gap: 'var(--space-2)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)' }}>
-            <div style={{ position: 'relative' }}>
-              <button 
-                className="btn-icon" 
-                onClick={() => setShowAddMenu(!showAddMenu)} 
-                title="Add Question" 
-                style={{ backgroundColor: 'var(--primary-50)', color: 'var(--primary-600)' }}
-              >
-                <Icon name="add" size={20} />
-              </button>
-              
-              {showAddMenu && (
-                <div 
-                  className="card" 
-                  style={{ 
-                    position: 'absolute', 
-                    right: '100%', 
-                    top: 0, 
-                    marginRight: 'var(--space-2)', 
-                    width: '200px', 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    padding: 'var(--space-2)',
-                    boxShadow: 'var(--shadow-lg)'
-                  }}
-                >
-                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addQuestion(); setShowAddMenu(false); }}>
-                    New Question
-                  </button>
-                  <div style={{ height: '1px', background: 'var(--border-color)', margin: 'var(--space-1) 0' }}></div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-400)', padding: 'var(--space-1) var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>RGUKT Presets</div>
-                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('id'); setShowAddMenu(false); }}>
-                    ID Number
-                  </button>
-                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('mail'); setShowAddMenu(false); }}>
-                    RGUKT Mail
-                  </button>
-                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('branch'); setShowAddMenu(false); }}>
-                    Branch Selection
-                  </button>
-                </div>
-              )}
-            </div>
+            <button 
+              className="btn-icon" 
+              onClick={() => setShowAddMenu(true)} 
+              title="Add Question" 
+              style={{ backgroundColor: 'var(--primary-50)', color: 'var(--primary-600)' }}
+            >
+              <Icon name="add" size={20} />
+            </button>
             <button className="btn-icon" title="Import questions" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
               <Icon name="download" size={20} />
             </button>
@@ -1406,6 +1372,66 @@ function FormEditor() {
                   style={{ width: '100%', height: '100%', minHeight: '297mm', border: 'none' }}
                   title="PDF Preview"
                 />
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Question Modal */}
+      {showAddMenu && createPortal(
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 'var(--space-4)' }} onClick={() => setShowAddMenu(false)}>
+          <div className="card animate-pop-in" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>Add Question</h3>
+              <button className="btn-icon" onClick={() => setShowAddMenu(false)}><Icon name="close" size={20} /></button>
+            </div>
+            
+            <div style={{ padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <button 
+                className="card" 
+                style={{ padding: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', border: '1px solid var(--border-color)' }} 
+                onClick={() => { addQuestion(); setShowAddMenu(false); }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-500)'; e.currentTarget.style.backgroundColor = 'var(--primary-50)'; }} 
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                <div style={{ padding: '8px', backgroundColor: 'var(--primary-100)', borderRadius: '8px', color: 'var(--primary-600)' }}>
+                  <Icon name="add" size={20} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 'var(--font-weight-medium)' }}>New Question</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Add a blank question</div>
+                </div>
+              </button>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-400)', padding: 'var(--space-2) 0', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 'var(--space-2)' }}>RGUKT Presets</div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-2)' }}>
+                <button 
+                  className="btn-ghost" 
+                  style={{ textAlign: 'left', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', border: '1px solid var(--gray-200)' }} 
+                  onClick={() => { addPredefinedQuestion('id'); setShowAddMenu(false); }}
+                >
+                  <Icon name="short_answer" size={18} color="var(--gray-500)" />
+                  ID Number
+                </button>
+                <button 
+                  className="btn-ghost" 
+                  style={{ textAlign: 'left', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', border: '1px solid var(--gray-200)' }} 
+                  onClick={() => { addPredefinedQuestion('mail'); setShowAddMenu(false); }}
+                >
+                  <Icon name="short_answer" size={18} color="var(--gray-500)" />
+                  RGUKT Mail
+                </button>
+                <button 
+                  className="btn-ghost" 
+                  style={{ textAlign: 'left', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', border: '1px solid var(--gray-200)' }} 
+                  onClick={() => { addPredefinedQuestion('branch'); setShowAddMenu(false); }}
+                >
+                  <Icon name="dropdown" size={18} color="var(--gray-500)" />
+                  Branch Selection
+                </button>
               </div>
             </div>
           </div>
