@@ -1142,7 +1142,7 @@ function FormEditor() {
             >
               <Icon name="add" size={20} />
             </button>
-            <button className="btn-icon" title="Import questions" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
+            <button className="btn-icon" title="Import questions" style={{ color: 'var(--text-secondary)' }} onClick={() => showToast('Feature coming soon', 'info')}>
               <Icon name="download" size={20} />
             </button>
             <button className="btn-icon" title="Add title and description" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('title_block')}>

@@ -3,8 +3,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import Icon from './Icon/Icon';
 import Loader from './Loader';
 import { getForms, getAllResponses } from '../services/db';
+import { useToast } from '../contexts/ToastContext';
 
 function Analytics() {
+  const { showToast } = useToast();
   const [forms, setForms] = useState([]);
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +104,7 @@ function Analytics() {
           <button className="btn btn-secondary">
             <Icon name="filter" size={18} /> Filter
           </button>
-          <button className="btn btn-primary" onClick={() => alert("CSV Export coming soon!")}>
+          <button className="btn btn-primary" onClick={() => showToast("CSV Export coming soon!", 'info')}>
             <Icon name="download" size={18} /> Export CSV
           </button>
         </div>

@@ -671,7 +671,7 @@ function FormViewer() {
 
   const handleFinalSubmit = async () => {
     if (!isConfirmed) {
-      alert("Please confirm that all data provided is correct.");
+      showToast("Please confirm that all data provided is correct.", 'warning');
       return;
     }
 
@@ -794,7 +794,7 @@ function FormViewer() {
                     .catch(reject);
               });
           } catch(e) {
-              alert("Failed to access webcam. This form requires a webcam snapshot to submit.");
+              showToast("Failed to access webcam. This form requires a webcam snapshot to submit.", 'error');
               setIsSubmitting(false);
               return;
           }
@@ -822,7 +822,7 @@ function FormViewer() {
       }
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert(`There was an error submitting your form or uploading files: ${error.message || error}. Please try again.`);
+      showToast(`There was an error submitting your form or uploading files: ${error.message || error}. Please try again.`, 'error');
     } finally {
       setIsSubmitting(false);
       setUploadProgress(0);

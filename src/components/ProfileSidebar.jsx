@@ -6,9 +6,11 @@ import { signOut, deleteUser } from 'firebase/auth';
 import { auth } from '../firebase';
 import { deleteUserAccountAndData } from '../services/db';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext';
 
 function ProfileSidebar({ isOpen, onClose }) {
   const { currentUser } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -65,7 +67,7 @@ function ProfileSidebar({ isOpen, onClose }) {
     } catch (error) {
       console.error('Failed to delete account', error);
       if (error.code === 'auth/requires-recent-login') {
-        alert("For security reasons, please log out and log back in before deleting your account.");
+        showToast("For security reasons, please log out and log back in before deleting your account.", 'error');
       }
       setDeleting(false);
       setShowDeleteConfirm(false);
