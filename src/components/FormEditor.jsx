@@ -451,7 +451,7 @@ function FormEditor() {
         newQuestion = { ...newQuestion, type: 'short_answer', title: 'ID Number', options: [] };
         break;
       case 'mail':
-        newQuestion = { ...newQuestion, type: 'short_answer', title: 'RGUKT Mail', options: [] };
+        newQuestion = { ...newQuestion, type: 'short_answer', title: 'Student Mail', options: [] };
         break;
       case 'branch':
         newQuestion = { ...newQuestion, type: 'dropdown', title: 'Branch', options: ['CSE', 'ECE', 'CIVIL', 'MECH', 'CHEM', 'MME', 'EEE'] };
@@ -1415,7 +1415,7 @@ function FormEditor() {
                   onClick={() => { addPredefinedQuestion('mail'); setShowAddMenu(false); }}
                 >
                   <Icon name="short_answer" size={18} color="var(--gray-500)" />
-                  RGUKT Mail
+                  Student Mail
                 </button>
                 <button 
                   className="btn-ghost" 
