@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -21,6 +21,102 @@ try {
   console.error('Secondary Auth error:', e);
   viewerAuth = fallbackAuth;
 }
+
+const CustomDropdown = ({ options, value, onChange, error, placeholder = "Choose" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+      <div 
+        className={`input-field ${error ? 'error' : ''}`}
+        style={{ 
+          width: '100%', 
+          cursor: 'pointer', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          background: 'var(--bg-surface)',
+          borderColor: isOpen ? 'var(--primary-500)' : 'var(--border-color)',
+          boxShadow: isOpen ? '0 0 0 3px var(--primary-100)' : 'none',
+        }}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span style={{ color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+          {value || placeholder}
+        </span>
+        <Icon name="chevron-down" size={20} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+      </div>
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+      
+      {isOpen && (
+        <div 
+          className="no-scrollbar"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
+            zIndex: 50,
+            maxHeight: '250px',
+            overflowY: 'auto',
+            padding: 'var(--space-1) 0'
+          }}
+        >
+          {options.map((opt, i) => (
+            <div
+              key={i}
+              onClick={() => {
+                onChange(opt);
+                setIsOpen(false);
+              }}
+              style={{
+                padding: 'var(--space-2) var(--space-3)',
+                cursor: 'pointer',
+                background: value === opt ? 'var(--primary-50)' : 'transparent',
+                color: value === opt ? 'var(--primary-700)' : 'var(--text-primary)',
+                fontWeight: value === opt ? '500' : '400',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'background 0.1s'
+              }}
+              onMouseEnter={(e) => {
+                if (value !== opt) e.currentTarget.style.background = 'var(--gray-50)';
+              }}
+              onMouseLeave={(e) => {
+                if (value !== opt) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function FormViewer() {
   const { formId } = useParams();
@@ -57,8 +153,14 @@ function FormViewer() {
 
   useEffect(() => {
     if (!viewerAuth) return;
-    const unsubscribe = onAuthStateChanged(viewerAuth, (user) => {
-      setViewerUser(user);
+    const unsubscribe = onAuthStateChanged(viewerAuth, async (user) => {
+      if (user && user.email && !user.email.endsWith('@rguktrkv.ac.in')) {
+        await signOut(viewerAuth);
+        showToast('Only @rguktrkv.ac.in emails are allowed to respond.', 'error');
+        setViewerUser(null);
+      } else {
+        setViewerUser(user);
+      }
     });
     return unsubscribe;
   }, []);
@@ -68,6 +170,54 @@ function FormViewer() {
       setEmail(viewerUser.email);
     }
   }, [viewerUser, form]);
+
+  useEffect(() => {
+    const autoFillStudentData = async () => {
+      if (viewerUser && viewerUser.email && viewerUser.email.endsWith('@rguktrkv.ac.in') && questions.length > 0) {
+        const studentId = viewerUser.email.split('@')[0].toUpperCase();
+        const student = await getStudentById(studentId);
+        
+        if (student) {
+          setAnswers(prev => {
+            const newAnswers = { ...prev };
+            let hasChanges = false;
+            
+            questions.forEach(q => {
+              const titleLower = q.title.toLowerCase();
+              if (/\bid\b/i.test(q.title)) {
+                if (!newAnswers[q.id]) { newAnswers[q.id] = student.id; hasChanges = true; }
+              } else if (titleLower.includes('name')) {
+                if (!newAnswers[q.id]) { newAnswers[q.id] = student.name; hasChanges = true; }
+              } else if (titleLower.includes('branch')) {
+                if (!newAnswers[q.id]) {
+                  let b = student.branch;
+                  if (b === 'CE') b = 'CIVIL';
+                  newAnswers[q.id] = b;
+                  hasChanges = true;
+                }
+              } else if (titleLower === 'gender' || titleLower === 'sex') {
+                if (!newAnswers[q.id]) {
+                  let g = student.gender;
+                  if (g === 'M' || g?.toLowerCase() === 'male') g = 'Male';
+                  else if (g === 'F' || g?.toLowerCase() === 'female') g = 'Female';
+                  newAnswers[q.id] = g;
+                  hasChanges = true;
+                }
+              } else if (titleLower.includes('section') || titleLower.includes('class')) {
+                if (!newAnswers[q.id] && student.classSection) { newAnswers[q.id] = student.classSection; hasChanges = true; }
+              } else if (titleLower.includes('email') || titleLower.includes('e-mail')) {
+                if (!newAnswers[q.id] && student.email) { newAnswers[q.id] = student.email; hasChanges = true; }
+              }
+            });
+            
+            return hasChanges ? newAnswers : prev;
+          });
+        }
+      }
+    };
+    
+    autoFillStudentData();
+  }, [viewerUser, questions]);
 
   useEffect(() => {
     const fetchForm = async () => {
@@ -275,6 +425,18 @@ function FormViewer() {
 
   const handleAnswerChange = (questionId, value, type) => {
     playSound();
+
+    // Auto-fetch ID if it reaches 7 chars or user types a space
+    const question = questions.find(q => q.id === questionId);
+    if (type === 'short_answer' && question && /\bid\b/i.test(question.title)) {
+      const trimmed = value.trim();
+      if ((trimmed.length === 7 || value.endsWith(' ')) && !verifyingId) {
+        if (trimmed.length > 0) {
+          setTimeout(() => handleVerifyId(questionId, trimmed), 0);
+        }
+      }
+    }
+
     if (type === 'checkboxes') {
       const currentValues = answers[questionId] || [];
       const newValues = currentValues.includes(value)
@@ -282,7 +444,7 @@ function FormViewer() {
         : [...currentValues, value];
       setAnswers({ ...answers, [questionId]: newValues });
     } else {
-      setAnswers({ ...answers, [questionId]: value });
+      setAnswers({ ...answers, [questionId]: value.trim() === value ? value : value.trim() + (value.endsWith(' ') ? ' ' : '') });
     }
     
     if (errors[questionId]) {
@@ -357,7 +519,9 @@ function FormViewer() {
         if (titleLower.includes('name')) {
           newAnswers[q.id] = student.name;
         } else if (titleLower.includes('branch')) {
-          newAnswers[q.id] = student.branch;
+          let b = student.branch;
+          if (b === 'CE') b = 'CIVIL';
+          newAnswers[q.id] = b;
         } else if (titleLower === 'gender' || titleLower === 'sex') {
           let g = student.gender;
           if (g === 'M' || g?.toLowerCase() === 'male') g = 'Male';
@@ -672,6 +836,13 @@ function FormViewer() {
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
       const result = await signInWithPopup(viewerAuth, provider);
+      
+      if (result.user && result.user.email && !result.user.email.endsWith('@rguktrkv.ac.in')) {
+        await signOut(viewerAuth);
+        showToast('Only @rguktrkv.ac.in emails are allowed to respond.', 'error');
+        return;
+      }
+      
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         localStorage.setItem('google_drive_token', credential.accessToken);
@@ -694,6 +865,13 @@ function FormViewer() {
       });
       await signOut(viewerAuth);
       const result = await signInWithPopup(viewerAuth, provider);
+      
+      if (result.user && result.user.email && !result.user.email.endsWith('@rguktrkv.ac.in')) {
+        await signOut(viewerAuth);
+        showToast('Only @rguktrkv.ac.in emails are allowed to respond.', 'error');
+        return;
+      }
+      
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         localStorage.setItem('google_drive_token', credential.accessToken);
@@ -1175,25 +1353,22 @@ function FormViewer() {
               <div>
                 {q.type === 'short_answer' && (
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    <input
-                      type="text"
-                      className={`input-field ${errors[q.id] ? 'error' : ''}`}
-                      style={{ width: '100%', maxWidth: '300px' }}
-                      placeholder="Your answer"
-                      value={answers[q.id] || ''}
-                      onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
-                      onPaste={(e) => { if(form.settings?.proctoring?.antiPaste) { e.preventDefault(); showToast("Pasting is disabled for this form.", "error"); } }}
-                    />
-                    {/\bid\b/i.test(q.title) && (
-                      <button 
-                        type="button" 
-                        className="btn btn-secondary"
-                        onClick={() => handleVerifyId(q.id, answers[q.id])}
-                        disabled={verifyingId === q.id}
-                      >
-                        {verifyingId === q.id ? <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite' }} /> : 'Verify'}
-                      </button>
-                    )}
+                    <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+                      <input
+                        type="text"
+                        className={`input-field ${errors[q.id] ? 'error' : ''}`}
+                        style={{ width: '100%' }}
+                        placeholder="Your answer"
+                        value={answers[q.id] || ''}
+                        onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
+                        onPaste={(e) => { if(form.settings?.proctoring?.antiPaste) { e.preventDefault(); showToast("Pasting is disabled for this form.", "error"); } }}
+                      />
+                      {/\bid\b/i.test(q.title) && verifyingId === q.id && (
+                        <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
+                          <Icon name="loader" size={16} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-500)' }} />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 
@@ -1244,17 +1419,12 @@ function FormViewer() {
                 )}
 
                 {q.type === 'dropdown' && (
-                  <select
-                    className={`input-field ${errors[q.id] ? 'error' : ''}`}
-                    style={{ width: '100%', maxWidth: '300px', cursor: 'pointer' }}
+                  <CustomDropdown 
+                    options={[...q.options].map(opt => opt === 'CE' ? 'CIVIL' : opt).sort((a, b) => String(a).localeCompare(String(b)))}
                     value={answers[q.id] || ''}
-                    onChange={(e) => handleAnswerChange(q.id, e.target.value, q.type)}
-                  >
-                    <option value="" disabled>Choose</option>
-                    {q.options.map((opt, i) => (
-                      <option key={i} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => handleAnswerChange(q.id, val, q.type)}
+                    error={errors[q.id]}
+                  />
                 )}
 
                 {q.type === 'file_upload' && (

@@ -79,6 +79,18 @@ function FormEditor() {
       const fetchForm = async () => {
         const currentForm = await getForm(formId);
         if (currentForm) {
+          // Auto-fix branch options: change CE to CIVIL and sort alphabetically
+          if (currentForm.questions) {
+            currentForm.questions.forEach(q => {
+              if (['dropdown', 'multiple_choice', 'checkboxes'].includes(q.type) && Array.isArray(q.options)) {
+                q.options = q.options.map(opt => opt === 'CE' ? 'CIVIL' : opt);
+                if (q.title && q.title.toLowerCase().includes('branch')) {
+                  q.options.sort((a, b) => String(a).localeCompare(String(b)));
+                }
+              }
+            });
+          }
+          
           setForm(currentForm);
           const hasChanges = !currentForm.publishedAt || (currentForm.updatedAt && currentForm.publishedAt && currentForm.updatedAt > currentForm.publishedAt);
           setHasChangesToPublish(hasChanges);
