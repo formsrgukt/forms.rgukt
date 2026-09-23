@@ -1257,36 +1257,58 @@ function FormViewer() {
           </div>
         </div>
 
-        <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            {form.settings?.privacy?.collectEmail && (
-              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>Email</div>
-                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{email}</div>
-              </div>
-            )}
-            {questions.map(q => {
-              const answer = answers[q.id];
-              let displayAnswer = answer;
-              if (answer instanceof File) {
-                displayAnswer = answer.name;
-              } else if (q.type === 'file_upload' && uploadedFileNames[q.id]) {
-                displayAnswer = uploadedFileNames[q.id];
-              } else if (Array.isArray(answer)) {
-                displayAnswer = answer.join(', ');
-              } else if (answer === undefined || answer === null || answer === '') {
-                displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
-              }
-              
-              return (
-                <div key={q.id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>{q.title}</div>
-                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{displayAnswer}</div>
+        {pages.map((page, pageIndex) => {
+          const pageHeader = (pageIndex > 0 && page[0]?.type === 'page_break') ? page[0] : null;
+          
+          return (
+            <div key={pageIndex} className="card" style={{ marginBottom: 'var(--space-4)' }}>
+              {pages.length > 1 && pageHeader && (
+                <div style={{ backgroundColor: 'var(--gray-50)', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border-color)', borderTopLeftRadius: 'var(--radius-lg)', borderTopRightRadius: 'var(--radius-lg)' }}>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>{pageHeader.title || `Page ${pageIndex + 1}`}</h3>
+                  {pageHeader.description && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: 'var(--space-1)' }}>{pageHeader.description}</div>}
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              )}
+              {pages.length > 1 && pageIndex === 0 && (
+                <div style={{ backgroundColor: 'var(--gray-50)', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border-color)', borderTopLeftRadius: 'var(--radius-lg)', borderTopRightRadius: 'var(--radius-lg)' }}>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>{form.title || 'Page 1'}</h3>
+                </div>
+              )}
+              
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                {form.settings?.privacy?.collectEmail && pageIndex === 0 && (
+                  <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>Email</div>
+                    <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{email}</div>
+                  </div>
+                )}
+                
+                {page.map((q, index) => {
+                  if (q.type === 'page_break' && index === 0 && pageIndex > 0) return null;
+                  if (['title_block', 'section_block', 'image_block', 'video_block', 'page_break'].includes(q.type)) return null;
+
+                  const answer = answers[q.id];
+                  let displayAnswer = answer;
+                  if (answer instanceof File) {
+                    displayAnswer = answer.name;
+                  } else if (q.type === 'file_upload' && uploadedFileNames[q.id]) {
+                    displayAnswer = uploadedFileNames[q.id];
+                  } else if (Array.isArray(answer)) {
+                    displayAnswer = answer.join(', ');
+                  } else if (answer === undefined || answer === null || answer === '') {
+                    displayAnswer = <span style={{ color: 'var(--gray-400)' }}>-</span>;
+                  }
+                  
+                  return (
+                    <div key={q.id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: 'var(--space-2)' }}>
+                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>{q.title || 'Untitled Question'}</div>
+                      <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-medium)', wordBreak: 'break-word' }}>{displayAnswer}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
 
         <div 
           className="card" 
