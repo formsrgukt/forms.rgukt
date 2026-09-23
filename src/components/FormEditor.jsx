@@ -55,6 +55,7 @@ function FormEditor() {
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [responses, setResponses] = useState([]);
   const [responseSearchTerm, setResponseSearchTerm] = useState('');
+  const [responseFilters, setResponseFilters] = useState({});
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [saveStatus, setSaveStatus] = useState('saved');
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -527,6 +528,22 @@ function FormEditor() {
   };
 
   const filteredResponses = responses.filter(r => {
+    // 1. Dropdown Filters
+    if (Object.keys(responseFilters).length > 0) {
+      for (const questionId in responseFilters) {
+        const filterValue = responseFilters[questionId];
+        if (filterValue) {
+          const answer = r.answers && r.answers[questionId];
+          if (Array.isArray(answer)) {
+             if (!answer.includes(filterValue)) return false;
+          } else {
+             if (answer !== filterValue) return false;
+          }
+        }
+      }
+    }
+
+    // 2. Text Search
     if (!responseSearchTerm) return true;
     const term = responseSearchTerm.toLowerCase();
     
@@ -730,6 +747,22 @@ function FormEditor() {
                         onChange={(e) => setResponseSearchTerm(e.target.value)}
                       />
                     </div>
+                    
+                    {form.questions.filter(q => ['dropdown', 'multiple_choice'].includes(q.type)).map(q => (
+                      <div key={q.id} style={{ position: 'relative' }}>
+                        <select 
+                          className="input-field" 
+                          style={{ padding: '8px 30px 8px 12px', minWidth: '150px' }}
+                          value={responseFilters[q.id] || ''}
+                          onChange={(e) => setResponseFilters({...responseFilters, [q.id]: e.target.value})}
+                        >
+                          <option value="">All {q.title || 'Options'}</option>
+                          {q.options.map((opt, i) => (
+                            <option key={i} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
                     
                     <div style={{ position: 'relative' }}>
                       <button 
