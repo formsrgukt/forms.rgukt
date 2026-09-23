@@ -206,7 +206,9 @@ function FormEditor() {
     setIsShortening(true);
     try {
       const fullUrl = `${window.location.origin}/view/${form.id}`;
-      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`);
+      // Use a CORS proxy for TinyURL since it doesn't support CORS directly
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`)}`;
+      const response = await fetch(proxyUrl);
       if (response.ok) {
         const url = await response.text();
         setShortUrl(url);
