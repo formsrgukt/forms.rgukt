@@ -913,16 +913,21 @@ function FormEditor() {
                           </div>
 
                           <div className="card-body" style={{ paddingTop: 0 }}>
+                            {q.type === 'page_break' && (
+                              <div style={{ display: 'inline-block', backgroundColor: 'var(--primary-100)', color: 'var(--primary-700)', padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-semibold)', marginBottom: 'var(--space-3)' }}>
+                                Page Break
+                              </div>
+                            )}
                             <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
                               <input
                                 type="text"
                                 className="input-field"
-                                style={{ flex: 1, backgroundColor: 'var(--gray-50)', fontSize: q.type === 'section_block' ? 'var(--text-lg)' : 'inherit', fontWeight: q.type === 'section_block' ? 'var(--font-weight-semibold)' : 'inherit' }}
+                                style={{ flex: 1, backgroundColor: 'var(--gray-50)', fontSize: ['section_block', 'page_break'].includes(q.type) ? 'var(--text-lg)' : 'inherit', fontWeight: ['section_block', 'page_break'].includes(q.type) ? 'var(--font-weight-semibold)' : 'inherit' }}
                                 value={q.title}
                                 onChange={(e) => updateQuestion(q.id, 'title', e.target.value)}
-                                placeholder={q.type === 'section_block' ? 'Section Title' : q.type === 'title_block' ? 'Title' : q.type === 'image_block' ? 'Image Title (optional)' : q.type === 'video_block' ? 'Video Title (optional)' : 'Question Title'}
+                                placeholder={q.type === 'page_break' ? 'Page Title (optional)' : q.type === 'section_block' ? 'Section Title' : q.type === 'title_block' ? 'Title' : q.type === 'image_block' ? 'Image Title (optional)' : q.type === 'video_block' ? 'Video Title (optional)' : 'Question Title'}
                               />
-                              {activeQuestion === q.id && !['title_block', 'image_block', 'video_block', 'section_block'].includes(q.type) && (
+                              {activeQuestion === q.id && !['title_block', 'image_block', 'video_block', 'section_block', 'page_break'].includes(q.type) && (
                                 <div style={{ width: '220px' }}>
                                   <CustomDropdown
                                     value={q.type}
@@ -934,7 +939,7 @@ function FormEditor() {
                             </div>
 
                             <div style={{ paddingLeft: 'var(--space-2)' }}>
-                              {(q.type === 'title_block' || q.type === 'section_block') && (
+                              {(q.type === 'title_block' || q.type === 'section_block' || q.type === 'page_break') && (
                                 <div style={{ marginBottom: 'var(--space-4)' }}>
                                   <input
                                     type="text"
@@ -1105,7 +1110,7 @@ function FormEditor() {
                                 <button className="btn-icon" onClick={() => deleteQuestion(q.id)} title="Delete">
                                   <Icon name="delete" size={20} />
                                 </button>
-                                {!['title_block', 'image_block', 'video_block', 'section_block'].includes(q.type) && (
+                                {!['title_block', 'image_block', 'video_block', 'section_block', 'page_break'].includes(q.type) && (
                                   <>
                                     <div style={{ width: '1px', background: 'var(--border-color)' }}></div>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
@@ -1162,6 +1167,9 @@ function FormEditor() {
             </button>
             <button className="btn-icon" title="Add section" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('section_block')}>
               <Icon name="section" size={20} />
+            </button>
+            <button className="btn-icon" title="Add page break" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('page_break')}>
+              <Icon name="page_break" size={20} />
             </button>
             <button className="btn-icon" title={form.settings?.coverScreen?.enabled ? "Edit Cover Screen" : "Add Cover Screen"} style={{ color: form.settings?.coverScreen?.enabled ? 'var(--primary-600)' : 'var(--text-secondary)', backgroundColor: form.settings?.coverScreen?.enabled ? 'var(--primary-50)' : 'transparent' }} onClick={() => setShowCoverModal(true)}>
               <Icon name="presentation" size={20} />

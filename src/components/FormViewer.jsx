@@ -131,6 +131,24 @@ function FormViewer() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState({});
   const [questions, setQuestions] = useState([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
+  const pages = React.useMemo(() => {
+    if (!questions || questions.length === 0) return [];
+    const result = [];
+    let currentPage = [];
+    questions.forEach(q => {
+      if (q.type === 'page_break') {
+        if (currentPage.length > 0) result.push(currentPage);
+        currentPage = [q];
+      } else {
+        currentPage.push(q);
+      }
+    });
+    if (currentPage.length > 0) result.push(currentPage);
+    return result;
+  }, [questions]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
@@ -624,6 +642,51 @@ function FormViewer() {
     }
   };
 
+  const handleNextPage = () => {
+    const newErrors = {};
+    let isValid = true;
+    
+    if (currentPageIndex === 0 && form.settings?.privacy?.collectEmail) {
+      if (!email.trim()) {
+        newErrors['email'] = 'Email is required';
+        isValid = false;
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        newErrors['email'] = 'Must be a valid email address';
+        isValid = false;
+      }
+    }
+
+    const currentQuestions = pages[currentPageIndex] || [];
+    currentQuestions.forEach(q => {
+      if (q.required) {
+        const answer = answers[q.id];
+        if (!answer || (Array.isArray(answer) && answer.length === 0)) {
+          newErrors[q.id] = 'This is a required question';
+          isValid = false;
+        }
+      }
+    });
+
+    if (!isValid) {
+      setErrors(newErrors);
+      const firstErrorId = Object.keys(newErrors)[0];
+      const element = document.getElementById(firstErrorId === 'email' ? 'email-input-card' : `question-${firstErrorId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    
+    setErrors({});
+    setCurrentPageIndex(prev => prev + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePrevPage = () => {
+    setCurrentPageIndex(prev => Math.max(0, prev - 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -640,7 +703,8 @@ function FormViewer() {
       }
     }
 
-    questions.forEach(q => {
+    const currentQuestions = pages[currentPageIndex] || [];
+    currentQuestions.forEach(q => {
       if (q.required) {
         const answer = answers[q.id];
         if (!answer || (Array.isArray(answer) && answer.length === 0)) {
@@ -1263,11 +1327,15 @@ function FormViewer() {
 
   let progress = 0;
   if (form.settings?.presentation?.showProgressBar && questions.length > 0) {
-    const answeredCount = questions.filter(q => {
-      const a = answers[q.id];
-      return a && (Array.isArray(a) ? a.length > 0 : String(a).trim().length > 0);
-    }).length;
-    progress = Math.round((answeredCount / questions.length) * 100);
+    if (pages.length > 1) {
+      progress = Math.round(((currentPageIndex + 1) / pages.length) * 100);
+    } else {
+      const answeredCount = questions.filter(q => {
+        const a = answers[q.id];
+        return a && (Array.isArray(a) ? a.length > 0 : String(a).trim().length > 0);
+      }).length;
+      progress = Math.round((answeredCount / questions.length) * 100);
+    }
   }
 
   return (
@@ -1281,7 +1349,7 @@ function FormViewer() {
       {form.settings?.presentation?.showProgressBar && (
         <div style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: 'var(--bg-app)', padding: 'var(--space-4) 0', marginBottom: 'var(--space-2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            <span>Page 1 of 1</span>
+            <span>Page {currentPageIndex + 1} of {pages.length}</span>
             <span>{progress}% Completed</span>
           </div>
           <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--gray-200)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
@@ -1322,7 +1390,7 @@ function FormViewer() {
       <form onSubmit={handleSubmit}>
         <div className="questions-grid">
         {/* Email Collection Card */}
-        {form.settings?.privacy?.collectEmail && (
+        {form.settings?.privacy?.collectEmail && currentPageIndex === 0 && (
           <div id="email-input-card" className="card" style={{ border: errors['email'] ? '1px solid var(--error-500)' : '1px solid var(--border-color)' }}>
             <div className="card-body">
               <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)' }}>
@@ -1346,7 +1414,7 @@ function FormViewer() {
           </div>
         )}
 
-        {questions.map((q, index) => {
+        {(pages[currentPageIndex] || []).map((q, index) => {
           if (form.settings?.presentation?.focusMode && index !== focusIndex) return null;
           return (
           <motion.div
@@ -1361,9 +1429,9 @@ function FormViewer() {
             }}
           >
             <div className="card-body">
-              {['title_block', 'section_block'].includes(q.type) ? (
+              {['title_block', 'section_block', 'page_break'].includes(q.type) ? (
                 <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <div style={{ fontSize: q.type === 'section_block' ? 'var(--text-2xl)' : 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-primary)', marginBottom: q.description ? 'var(--space-2)' : 0 }}>
+                  <div style={{ fontSize: ['section_block', 'page_break'].includes(q.type) ? 'var(--text-2xl)' : 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-primary)', marginBottom: q.description ? 'var(--space-2)' : 0 }}>
                     {q.title}
                   </div>
                   {q.description && (
@@ -1635,12 +1703,27 @@ function FormViewer() {
         )}
 
         <div className="flex-between" style={{ marginTop: 'var(--space-8)' }}>
-          <button type="button" className="btn btn-ghost" onClick={() => setShowClearConfirm(true)}>
-            Clear form
-          </button>
-          <button type="submit" className="btn btn-primary" style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
-            Submit
-          </button>
+          <div>
+            <button type="button" className="btn btn-ghost" onClick={() => setShowClearConfirm(true)}>
+              Clear form
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+            {currentPageIndex > 0 && (
+              <button type="button" className="btn btn-secondary" onClick={handlePrevPage}>
+                Back
+              </button>
+            )}
+            {currentPageIndex < pages.length - 1 ? (
+              <button type="button" className="btn btn-primary" onClick={handleNextPage} style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
+                Next
+              </button>
+            ) : (
+              <button type="submit" className="btn btn-primary" style={{ padding: 'var(--space-3) var(--space-8)', fontSize: 'var(--text-base)' }}>
+                Submit
+              </button>
+            )}
+          </div>
         </div>
       </form>
 

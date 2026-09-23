@@ -81,7 +81,8 @@ const iconMap = {
   'file_upload': LucideIcons.UploadCloud,
   'image': LucideIcons.Image,
   'video': LucideIcons.Video,
-  'section': LucideIcons.Rows
+  'section': LucideIcons.Rows,
+  'page_break': LucideIcons.SeparatorHorizontal
 };
 
 export default function Icon({ name, size = 20, className = '', ...props }) {
