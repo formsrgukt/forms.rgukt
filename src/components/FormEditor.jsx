@@ -206,12 +206,12 @@ function FormEditor() {
     setIsShortening(true);
     try {
       const fullUrl = `${window.location.origin}/view/${form.id}`;
-      // Use a CORS proxy for TinyURL since it doesn't support CORS directly
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`)}`;
+      // Use a CORS proxy /get endpoint which reliably returns CORS headers wrapped in JSON
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`)}`;
       const response = await fetch(proxyUrl);
       if (response.ok) {
-        const url = await response.text();
-        setShortUrl(url);
+        const data = await response.json();
+        setShortUrl(data.contents);
       } else {
         showToast('Failed to shorten URL', 'error');
       }
