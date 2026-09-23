@@ -69,6 +69,7 @@ function FormEditor() {
   const [publishStatus, setPublishStatus] = useState('idle');
   const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
   const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const initialLoadRef = useRef(false);
   const isPublishingRef = useRef(false);
 
@@ -437,6 +438,39 @@ function FormEditor() {
     setForm({ ...form, questions: newQuestions });
     setActiveQuestion(newQuestion.id);
     showToast('Question added');
+  };
+
+  const addPredefinedQuestion = (presetType) => {
+    let newQuestion = {
+      id: uuidv4(),
+      required: true
+    };
+    
+    switch(presetType) {
+      case 'id':
+        newQuestion = { ...newQuestion, type: 'short_answer', title: 'ID Number', options: [] };
+        break;
+      case 'mail':
+        newQuestion = { ...newQuestion, type: 'short_answer', title: 'RGUKT Mail', options: [] };
+        break;
+      case 'branch':
+        newQuestion = { ...newQuestion, type: 'dropdown', title: 'Branch', options: ['CSE', 'ECE', 'CIVIL', 'MECH', 'CHEM', 'MME', 'EEE'] };
+        break;
+      default:
+        return;
+    }
+
+    const newQuestions = [...form.questions];
+    if (activeQuestion) {
+      const index = newQuestions.findIndex(q => q.id === activeQuestion);
+      newQuestions.splice(index + 1, 0, newQuestion);
+    } else {
+      newQuestions.push(newQuestion);
+    }
+    
+    setForm({ ...form, questions: newQuestions });
+    setActiveQuestion(newQuestion.id);
+    showToast(`${newQuestion.title} question added`);
   };
 
   const updateQuestion = (id, field, value) => {
@@ -1100,9 +1134,48 @@ function FormEditor() {
       {activeTab === 'questions' && (
         <div style={{ position: 'fixed', right: 'var(--space-6)', top: '160px', zIndex: 150 }}>
           <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 'var(--space-2)', gap: 'var(--space-2)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)' }}>
-            <button className="btn-icon" onClick={addQuestion} title="Add Question" style={{ backgroundColor: 'var(--primary-50)', color: 'var(--primary-600)' }}>
-              <Icon name="add" size={20} />
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="btn-icon" 
+                onClick={() => setShowAddMenu(!showAddMenu)} 
+                title="Add Question" 
+                style={{ backgroundColor: 'var(--primary-50)', color: 'var(--primary-600)' }}
+              >
+                <Icon name="add" size={20} />
+              </button>
+              
+              {showAddMenu && (
+                <div 
+                  className="card" 
+                  style={{ 
+                    position: 'absolute', 
+                    right: '100%', 
+                    top: 0, 
+                    marginRight: 'var(--space-2)', 
+                    width: '200px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    padding: 'var(--space-2)',
+                    boxShadow: 'var(--shadow-lg)'
+                  }}
+                >
+                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addQuestion(); setShowAddMenu(false); }}>
+                    New Question
+                  </button>
+                  <div style={{ height: '1px', background: 'var(--border-color)', margin: 'var(--space-1) 0' }}></div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-400)', padding: 'var(--space-1) var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>RGUKT Presets</div>
+                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('id'); setShowAddMenu(false); }}>
+                    ID Number
+                  </button>
+                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('mail'); setShowAddMenu(false); }}>
+                    RGUKT Mail
+                  </button>
+                  <button className="btn-ghost" style={{ textAlign: 'left', padding: 'var(--space-2)' }} onClick={() => { addPredefinedQuestion('branch'); setShowAddMenu(false); }}>
+                    Branch Selection
+                  </button>
+                </div>
+              )}
+            </div>
             <button className="btn-icon" title="Import questions" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
               <Icon name="download" size={20} />
             </button>
