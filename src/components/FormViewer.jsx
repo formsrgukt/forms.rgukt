@@ -1371,15 +1371,26 @@ function FormViewer() {
         </div>
       )}
 
-      <div className="card" style={{ borderTop: '8px solid var(--primary-500)', marginBottom: 'var(--space-4)' }}>
-        <div className="card-body">
-          <h1 style={{ fontSize: 'var(--text-4xl)', marginBottom: 'var(--space-2)' }}>{form.title}</h1>
-          {form.description && <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>{form.description}</p>}
-          <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-color)', fontSize: 'var(--text-sm)', color: 'var(--error-500)' }}>
-            * Indicates required question
+      {(() => {
+        const pageHeader = (pages[currentPageIndex] && pages[currentPageIndex][0]?.type === 'page_break') ? pages[currentPageIndex][0] : null;
+        return (
+          <div className="card" style={{ borderTop: '8px solid var(--primary-500)', marginBottom: 'var(--space-4)' }}>
+            <div className="card-body">
+              <h1 style={{ fontSize: 'var(--text-4xl)', marginBottom: 'var(--space-2)' }}>
+                {pageHeader ? pageHeader.title : form.title}
+              </h1>
+              {(pageHeader ? pageHeader.description : form.description) && (
+                <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
+                  {pageHeader ? pageHeader.description : form.description}
+                </p>
+              )}
+              <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-color)', fontSize: 'var(--text-sm)', color: 'var(--error-500)' }}>
+                * Indicates required question
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {viewerUser && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', backgroundColor: 'var(--gray-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: 'var(--text-sm)' }}>
@@ -1430,6 +1441,7 @@ function FormViewer() {
         {(pages[currentPageIndex] || []).map((q, index) => {
           const isFocusMode = form.settings?.presentation?.focusMode && pages.length <= 1;
           if (isFocusMode && index !== focusIndex) return null;
+          if (q.type === 'page_break' && index === 0) return null;
           return (
           <motion.div
             key={q.id}
