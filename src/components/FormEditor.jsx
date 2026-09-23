@@ -1382,7 +1382,7 @@ function FormEditor() {
       {/* Add Question Modal */}
       {showAddMenu && createPortal(
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 'var(--space-4)' }} onClick={() => setShowAddMenu(false)}>
-          <div className="card animate-pop-in" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-semibold)' }}>Add Question</h3>
               <button className="btn-icon" onClick={() => setShowAddMenu(false)}><Icon name="close" size={20} /></button>
@@ -1390,19 +1390,12 @@ function FormEditor() {
             
             <div style={{ padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <button 
-                className="card" 
-                style={{ padding: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', border: '1px solid var(--border-color)' }} 
+                className="btn-ghost" 
+                style={{ textAlign: 'left', padding: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', border: '1px solid var(--primary-200)', backgroundColor: 'var(--primary-50)' }} 
                 onClick={() => { addQuestion(); setShowAddMenu(false); }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-500)'; e.currentTarget.style.backgroundColor = 'var(--primary-50)'; }} 
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
-                <div style={{ padding: '8px', backgroundColor: 'var(--primary-100)', borderRadius: '8px', color: 'var(--primary-600)' }}>
-                  <Icon name="add" size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 'var(--font-weight-medium)' }}>New Question</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Add a blank question</div>
-                </div>
+                <Icon name="add" size={18} color="var(--primary-600)" />
+                <span style={{ color: 'var(--primary-700)', fontWeight: 'var(--font-weight-medium)' }}>New Question</span>
               </button>
 
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-400)', padding: 'var(--space-2) 0', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 'var(--space-2)' }}>RGUKT Presets</div>
