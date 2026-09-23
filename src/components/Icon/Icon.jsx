@@ -45,6 +45,7 @@ const iconMap = {
   'help': LucideIcons.HelpCircle,
   'clock': LucideIcons.Clock,
   'menu': LucideIcons.Menu,
+  'upload': LucideIcons.Upload,
   'download': LucideIcons.Download,
   'users': LucideIcons.Users,
   'activity': LucideIcons.Activity,

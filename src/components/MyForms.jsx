@@ -276,7 +276,11 @@ function MyForms() {
                     </div>
                   </td>
                   <td style={{ padding: 'var(--space-4) var(--space-5)' }}>
-                    <span className="badge badge-success">Active</span>
+                    {form.publishedAt ? (
+                      <span className="badge badge-success">Published</span>
+                    ) : (
+                      <span className="badge" style={{ backgroundColor: 'var(--warning-100)', color: 'var(--warning-700)' }}>Draft</span>
+                    )}
                   </td>
                   <td style={{ padding: 'var(--space-4) var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>

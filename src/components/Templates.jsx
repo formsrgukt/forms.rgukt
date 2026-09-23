@@ -6,7 +6,7 @@ import { saveForm } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 
 function Templates() {
-  const { userProfile } = useAuth();
+  const { currentUser, userProfile } = useAuth();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
@@ -15,6 +15,7 @@ function Templates() {
     setCreating(true);
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Untitled Form',
       description: '',
       questions: [],
@@ -54,6 +55,7 @@ function Templates() {
   const createRguktTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'RGUKT Students Form',
       description: 'Please provide your details.',
       questions: [
@@ -97,6 +99,7 @@ function Templates() {
   const createStudentRegistrationTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Student Registration Form',
       description: 'Please fill out this form to register as a student.',
       questions: [
@@ -148,6 +151,7 @@ function Templates() {
   const createStudentFeedbackTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Student Feedback Form',
       description: 'Please provide your feedback.',
       questions: [
@@ -198,6 +202,7 @@ function Templates() {
   const createEventRegistrationTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Event Registration Form',
       description: 'Please fill out this form to register for the event.',
       questions: [
@@ -250,6 +255,7 @@ function Templates() {
   const createJobApplicationTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Job Application Form',
       description: 'Please fill out this form to apply for the position.',
       questions: [
@@ -302,6 +308,7 @@ function Templates() {
   const createHackathonTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Hackathon Registration Form',
       description: 'Register your team for the upcoming hackathon.',
       questions: [
@@ -357,6 +364,7 @@ function Templates() {
   const createComplaintTemplate = async () => {
     const newForm = {
       id: uuidv4(),
+      userId: currentUser?.uid,
       title: 'Complaint / Grievance Form',
       description: 'Please submit your complaint or grievance using this form.',
       questions: [
