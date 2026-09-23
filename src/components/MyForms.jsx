@@ -305,22 +305,7 @@ function MyForms() {
                       <button className="btn-icon" onClick={() => navigate(`/edit/${form.id}`)} title="Edit">
                         <Icon name="edit" size={18} />
                       </button>
-                      <button 
-                        className="btn-icon" 
-                        onClick={() => form.publishedAt ? handleCopyLink(form.id) : showToast('Publish form to enable sharing', 'warning')} 
-                        title="Copy Share Link"
-                        style={{ opacity: form.publishedAt ? 1 : 0.5, cursor: form.publishedAt ? 'pointer' : 'not-allowed' }}
-                      >
-                        <Icon name="link" size={18} />
-                      </button>
-                      <button 
-                        className="btn-icon" 
-                        onClick={() => form.publishedAt ? handleExport(form) : showToast('Publish form to enable sharing', 'warning')} 
-                        title="Export Form to JSON File"
-                        style={{ opacity: form.publishedAt ? 1 : 0.5, cursor: form.publishedAt ? 'pointer' : 'not-allowed' }}
-                      >
-                        <Icon name="download" size={18} />
-                      </button>
+
                       <button 
                         className="btn-icon" 
                         style={{ color: deletingId === form.id ? 'var(--gray-400)' : 'var(--error-500)', opacity: deletingId === form.id ? 0.7 : 1, cursor: deletingId === form.id ? 'not-allowed' : 'pointer' }} 

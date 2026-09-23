@@ -877,12 +877,12 @@ function FormEditor() {
                               <input
                                 type="text"
                                 className="input-field"
-                                style={{ flex: 1, backgroundColor: 'var(--gray-50)' }}
+                                style={{ flex: 1, backgroundColor: 'var(--gray-50)', fontSize: q.type === 'section_block' ? 'var(--text-lg)' : 'inherit', fontWeight: q.type === 'section_block' ? 'var(--font-weight-semibold)' : 'inherit' }}
                                 value={q.title}
                                 onChange={(e) => updateQuestion(q.id, 'title', e.target.value)}
-                                placeholder="Question Title"
+                                placeholder={q.type === 'section_block' ? 'Section Title' : q.type === 'title_block' ? 'Title' : q.type === 'image_block' ? 'Image Title (optional)' : q.type === 'video_block' ? 'Video Title (optional)' : 'Question Title'}
                               />
-                              {activeQuestion === q.id && (
+                              {activeQuestion === q.id && !['title_block', 'image_block', 'video_block', 'section_block'].includes(q.type) && (
                                 <div style={{ width: '220px' }}>
                                   <CustomDropdown
                                     value={q.type}
@@ -894,6 +894,64 @@ function FormEditor() {
                             </div>
 
                             <div style={{ paddingLeft: 'var(--space-2)' }}>
+                              {(q.type === 'title_block' || q.type === 'section_block') && (
+                                <div style={{ marginBottom: 'var(--space-4)' }}>
+                                  <input
+                                    type="text"
+                                    className="input-field"
+                                    style={{ width: '100%', backgroundColor: 'var(--gray-50)' }}
+                                    value={q.description || ''}
+                                    onChange={(e) => updateQuestion(q.id, 'description', e.target.value)}
+                                    placeholder="Description (optional)"
+                                  />
+                                </div>
+                              )}
+                              
+                              {q.type === 'image_block' && (
+                                <div style={{ marginBottom: 'var(--space-4)' }}>
+                                  <input
+                                    type="text"
+                                    className="input-field"
+                                    style={{ width: '100%', backgroundColor: 'var(--gray-50)', marginBottom: 'var(--space-3)' }}
+                                    value={q.imageUrl || ''}
+                                    onChange={(e) => updateQuestion(q.id, 'imageUrl', e.target.value)}
+                                    placeholder="Paste Image URL here"
+                                  />
+                                  {q.imageUrl && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', backgroundColor: 'var(--gray-100)', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)' }}>
+                                      <img src={q.imageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain' }} onError={(e) => e.target.style.display = 'none'} />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {q.type === 'video_block' && (
+                                <div style={{ marginBottom: 'var(--space-4)' }}>
+                                  <input
+                                    type="text"
+                                    className="input-field"
+                                    style={{ width: '100%', backgroundColor: 'var(--gray-50)', marginBottom: 'var(--space-3)' }}
+                                    value={q.videoUrl || ''}
+                                    onChange={(e) => updateQuestion(q.id, 'videoUrl', e.target.value)}
+                                    placeholder="Paste YouTube Video URL here"
+                                  />
+                                  {q.videoUrl && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', backgroundColor: 'var(--gray-100)', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)' }}>
+                                      <iframe 
+                                        width="100%" 
+                                        height="300" 
+                                        src={q.videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')} 
+                                        title="Video preview" 
+                                        frameBorder="0" 
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                        allowFullScreen
+                                        style={{ maxWidth: '500px' }}
+                                      ></iframe>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               {q.type === 'short_answer' && (
                                 <div style={{ borderBottom: '1px dotted var(--gray-400)', width: '50%', padding: 'var(--space-2) 0', color: 'var(--text-tertiary)' }}>
                                   Short answer text
@@ -1007,16 +1065,20 @@ function FormEditor() {
                                 <button className="btn-icon" onClick={() => deleteQuestion(q.id)} title="Delete">
                                   <Icon name="delete" size={20} />
                                 </button>
-                                <div style={{ width: '1px', background: 'var(--border-color)' }}></div>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
-                                  Required
-                                  <input
-                                    type="checkbox"
-                                    checked={q.required || false}
-                                    onChange={(e) => updateQuestion(q.id, 'required', e.target.checked)}
-                                    style={{ width: '16px', height: '16px', accentColor: 'var(--primary-500)' }}
-                                  />
-                                </label>
+                                {!['title_block', 'image_block', 'video_block', 'section_block'].includes(q.type) && (
+                                  <>
+                                    <div style={{ width: '1px', background: 'var(--border-color)' }}></div>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
+                                      Required
+                                      <input
+                                        type="checkbox"
+                                        checked={q.required || false}
+                                        onChange={(e) => updateQuestion(q.id, 'required', e.target.checked)}
+                                        style={{ width: '16px', height: '16px', accentColor: 'var(--primary-500)' }}
+                                      />
+                                    </label>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1044,16 +1106,16 @@ function FormEditor() {
             <button className="btn-icon" title="Import questions" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
               <Icon name="download" size={20} />
             </button>
-            <button className="btn-icon" title="Add title and description" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
+            <button className="btn-icon" title="Add title and description" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('title_block')}>
               <Icon name="short_answer" size={20} />
             </button>
-            <button className="btn-icon" title="Add image" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
+            <button className="btn-icon" title="Add image" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('image_block')}>
               <Icon name="image" size={20} />
             </button>
-            <button className="btn-icon" title="Add video" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
+            <button className="btn-icon" title="Add video" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('video_block')}>
               <Icon name="video" size={20} />
             </button>
-            <button className="btn-icon" title="Add section" style={{ color: 'var(--text-secondary)' }} onClick={() => alert('Feature coming soon')}>
+            <button className="btn-icon" title="Add section" style={{ color: 'var(--text-secondary)' }} onClick={() => addQuestion('section_block')}>
               <Icon name="section" size={20} />
             </button>
             <button className="btn-icon" title={form.settings?.coverScreen?.enabled ? "Edit Cover Screen" : "Add Cover Screen"} style={{ color: form.settings?.coverScreen?.enabled ? 'var(--primary-600)' : 'var(--text-secondary)', backgroundColor: form.settings?.coverScreen?.enabled ? 'var(--primary-50)' : 'transparent' }} onClick={() => setShowCoverModal(true)}>

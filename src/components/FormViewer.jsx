@@ -1341,16 +1341,50 @@ function FormViewer() {
             }}
           >
             <div className="card-body">
-              <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>{q.title} {q.required && <span style={{ color: 'var(--error-500)' }}>*</span>}</div>
-                {form.settings?.accessibility?.enableVoiceRead && (
-                  <button type="button" onClick={() => readAloud(q.title)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary-500)', flexShrink: 0 }} title="Read question aloud">
-                    <Icon name="volume_up" size={24} />
-                  </button>
-                )}
-              </div>
+              {['title_block', 'section_block'].includes(q.type) ? (
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <div style={{ fontSize: q.type === 'section_block' ? 'var(--text-2xl)' : 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-primary)', marginBottom: q.description ? 'var(--space-2)' : 0 }}>
+                    {q.title}
+                  </div>
+                  {q.description && (
+                    <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                      {q.description}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)', fontWeight: 'var(--font-weight-medium)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>{q.title} {q.required && <span style={{ color: 'var(--error-500)' }}>*</span>}</div>
+                  {form.settings?.accessibility?.enableVoiceRead && (
+                    <button type="button" onClick={() => readAloud(q.title)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary-500)', flexShrink: 0 }} title="Read question aloud">
+                      <Icon name="volume_up" size={24} />
+                    </button>
+                  )}
+                </div>
+              )}
               
               <div>
+                {q.type === 'image_block' && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-2)' }}>
+                    {q.imageUrl && <img src={q.imageUrl} alt={q.title || 'Image'} style={{ maxWidth: '100%', borderRadius: 'var(--radius-md)' }} onError={(e) => e.target.style.display = 'none'} />}
+                  </div>
+                )}
+                {q.type === 'video_block' && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-2)' }}>
+                    {q.videoUrl && (
+                      <iframe 
+                        width="100%" 
+                        height="400" 
+                        src={q.videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')} 
+                        title={q.title || 'Video preview'} 
+                        frameBorder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowFullScreen
+                        style={{ maxWidth: '700px', borderRadius: 'var(--radius-md)' }}
+                      ></iframe>
+                    )}
+                  </div>
+                )}
                 {q.type === 'short_answer' && (
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                     <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
