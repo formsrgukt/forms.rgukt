@@ -70,9 +70,8 @@ function FormEditor() {
   const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
   const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [shortUrl, setShortUrl] = useState('');
-  const [isShortening, setIsShortening] = useState(false);
   const initialLoadRef = useRef(false);
+  const isFirstFormLoadRef = useRef(true);
   const isPublishingRef = useRef(false);
 
   const [form, setForm, { undo, redo, canUndo, canRedo }] = useUndo(null);
@@ -107,7 +106,12 @@ function FormEditor() {
   }, [formId, navigate, setForm]);
 
   useEffect(() => {
-    if (form && initialLoadRef.current) {
+    if (form) {
+      if (isFirstFormLoadRef.current) {
+        isFirstFormLoadRef.current = false;
+        return;
+      }
+      
       if (!isPublishingRef.current) {
         setHasChangesToPublish(true);
         setSaveStatus('unsaved'); // Indicate there are unsaved changes
@@ -198,28 +202,6 @@ function FormEditor() {
       }
     } else {
       setShowPublishModal(true);
-    }
-  };
-
-  const generateShortUrl = async () => {
-    if (shortUrl) return; // already generated
-    setIsShortening(true);
-    try {
-      const fullUrl = `${window.location.origin}/view/${form.id}`;
-      // Use a CORS proxy /get endpoint which reliably returns CORS headers wrapped in JSON
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`)}`;
-      const response = await fetch(proxyUrl);
-      if (response.ok) {
-        const data = await response.json();
-        setShortUrl(data.contents);
-      } else {
-        showToast('Failed to shorten URL', 'error');
-      }
-    } catch (error) {
-      console.error('Error shortening URL:', error);
-      showToast('Error connecting to URL shortener', 'error');
-    } finally {
-      setIsShortening(false);
     }
   };
 
@@ -1203,36 +1185,18 @@ function FormEditor() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Share this link to start collecting responses from students.
             </p>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-              <input 
-                type="checkbox" 
-                id="shorten-url" 
-                onChange={(e) => {
-                  if (e.target.checked) generateShortUrl();
-                  else setShortUrl('');
-                }}
-                checked={!!shortUrl}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--primary-500)' }}
-              />
-              <label htmlFor="shorten-url" style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)' }}>
-                Shorten URL
-                {isShortening && <Icon name="loader" size={14} style={{ animation: 'spin 1s linear infinite' }} />}
-              </label>
-            </div>
-
             <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
               <input 
                 type="text" 
                 className="input-field" 
-                style={{ flex: 1, backgroundColor: 'var(--gray-50)', color: 'var(--text-primary)' }} 
+                style={{ flex: 1, backgroundColor: 'var(--gray-50)' }} 
                 readOnly 
-                value={shortUrl || `${window.location.origin}/view/${form.id}`} 
+                value={`${window.location.origin}/view/${form.id}`} 
               />
               <button 
                 className={`btn ${copied ? 'btn-success' : 'btn-secondary'}`} 
                 onClick={() => {
-                  navigator.clipboard.writeText(shortUrl || `${window.location.origin}/view/${form.id}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/view/${form.id}`);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
