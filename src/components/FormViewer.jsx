@@ -985,7 +985,17 @@ function FormViewer() {
   };
 
   if (loading) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
-  if (!form) return <div className="container flex-center" style={{ minHeight: '50vh' }}>Form not found</div>;
+  if (!form) {
+    return (
+      <div className="form-viewer-container animate-fade-in" style={{ padding: 'var(--space-4)', maxWidth: '600px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <div className="card" style={{ padding: 'var(--space-12) var(--space-8)', borderTop: '8px solid var(--error-500)', textAlign: 'center', width: '100%' }}>
+          <Icon name="delete" size={48} color="var(--error-500)" />
+          <h2 style={{ fontSize: 'var(--text-2xl)', margin: 'var(--space-4) 0', color: 'var(--text-primary)' }}>Form Unavailable</h2>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>This form has been permanently deleted or is no longer available.</p>
+        </div>
+      </div>
+    );
+  }
   if (isSwitchingAccount) return <div className="container flex-center" style={{ minHeight: '50vh' }}><Loader /></div>;
 
   if (geoError) {
