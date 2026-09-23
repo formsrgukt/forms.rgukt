@@ -199,6 +199,8 @@ function FormEditor() {
     } else {
       setShowPublishModal(true);
     }
+  };
+
   const generateShortUrl = async () => {
     if (shortUrl) return; // already generated
     setIsShortening(true);
