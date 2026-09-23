@@ -55,7 +55,6 @@ function FormEditor() {
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [responses, setResponses] = useState([]);
   const [responseSearchTerm, setResponseSearchTerm] = useState('');
-  const [responseFilters, setResponseFilters] = useState({});
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [saveStatus, setSaveStatus] = useState('saved');
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -71,6 +70,8 @@ function FormEditor() {
   const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
   const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [shortUrl, setShortUrl] = useState('');
+  const [isShortening, setIsShortening] = useState(false);
   const initialLoadRef = useRef(false);
   const isPublishingRef = useRef(false);
 
@@ -197,6 +198,24 @@ function FormEditor() {
       }
     } else {
       setShowPublishModal(true);
+    }
+  const generateShortUrl = async () => {
+    if (shortUrl) return; // already generated
+    setIsShortening(true);
+    try {
+      const fullUrl = `${window.location.origin}/view/${form.id}`;
+      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`);
+      if (response.ok) {
+        const url = await response.text();
+        setShortUrl(url);
+      } else {
+        showToast('Failed to shorten URL', 'error');
+      }
+    } catch (error) {
+      console.error('Error shortening URL:', error);
+      showToast('Error connecting to URL shortener', 'error');
+    } finally {
+      setIsShortening(false);
     }
   };
 
@@ -528,22 +547,6 @@ function FormEditor() {
   };
 
   const filteredResponses = responses.filter(r => {
-    // 1. Dropdown Filters
-    if (Object.keys(responseFilters).length > 0) {
-      for (const questionId in responseFilters) {
-        const filterValue = responseFilters[questionId];
-        if (filterValue) {
-          const answer = r.answers && r.answers[questionId];
-          if (Array.isArray(answer)) {
-             if (!answer.includes(filterValue)) return false;
-          } else {
-             if (answer !== filterValue) return false;
-          }
-        }
-      }
-    }
-
-    // 2. Text Search
     if (!responseSearchTerm) return true;
     const term = responseSearchTerm.toLowerCase();
     
@@ -747,34 +750,6 @@ function FormEditor() {
                         onChange={(e) => setResponseSearchTerm(e.target.value)}
                       />
                     </div>
-                    
-                    {form.questions.map(q => {
-                      // Get unique values from responses for this question
-                      const uniqueValues = [...new Set(responses
-                        .map(r => r.answers && r.answers[q.id])
-                        .filter(val => val !== undefined && val !== null && val !== '')
-                        .map(val => Array.isArray(val) ? val.join(', ') : String(val))
-                      )].sort();
-
-                      // Only show filter if there are actually responses to filter by
-                      if (uniqueValues.length === 0) return null;
-
-                      return (
-                        <div key={q.id} style={{ position: 'relative', flex: '1 1 auto' }}>
-                          <select 
-                            className="input-field" 
-                            style={{ padding: '8px 30px 8px 12px', minWidth: '130px', width: '100%' }}
-                            value={responseFilters[q.id] || ''}
-                            onChange={(e) => setResponseFilters({...responseFilters, [q.id]: e.target.value})}
-                          >
-                            <option value="">All {q.title || 'Options'}</option>
-                            {uniqueValues.map((val, i) => (
-                              <option key={i} value={val}>{val}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
                     
                     <div style={{ position: 'relative' }}>
                       <button 
@@ -1224,18 +1199,36 @@ function FormEditor() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Share this link to start collecting responses from students.
             </p>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+              <input 
+                type="checkbox" 
+                id="shorten-url" 
+                onChange={(e) => {
+                  if (e.target.checked) generateShortUrl();
+                  else setShortUrl('');
+                }}
+                checked={!!shortUrl}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--primary-500)' }}
+              />
+              <label htmlFor="shorten-url" style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)' }}>
+                Shorten URL
+                {isShortening && <Icon name="loader" size={14} style={{ animation: 'spin 1s linear infinite' }} />}
+              </label>
+            </div>
+
             <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
               <input 
                 type="text" 
                 className="input-field" 
-                style={{ flex: 1, backgroundColor: 'var(--gray-50)' }} 
+                style={{ flex: 1, backgroundColor: 'var(--gray-50)', color: 'var(--text-primary)' }} 
                 readOnly 
-                value={`${window.location.origin}/view/${form.id}`} 
+                value={shortUrl || `${window.location.origin}/view/${form.id}`} 
               />
               <button 
                 className={`btn ${copied ? 'btn-success' : 'btn-secondary'}`} 
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/view/${form.id}`);
+                  navigator.clipboard.writeText(shortUrl || `${window.location.origin}/view/${form.id}`);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
