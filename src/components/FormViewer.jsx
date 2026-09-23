@@ -323,6 +323,26 @@ function FormViewer() {
   }, [form, submitted, isSubmitting]);
 
   useEffect(() => {
+    if (!form || !form.settings?.proctoring?.antiPaste) return;
+    const handlePaste = (e) => {
+      e.preventDefault();
+      showToast("Pasting is disabled for this form.", "error");
+    };
+    document.addEventListener("paste", handlePaste, true);
+    return () => document.removeEventListener("paste", handlePaste, true);
+  }, [form]);
+
+  useEffect(() => {
+    if (!form || !form.settings?.proctoring?.disableRightClick) return;
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      showToast("Right-click is disabled for this form.", "error");
+    };
+    document.addEventListener("contextmenu", handleContextMenu);
+    return () => document.removeEventListener("contextmenu", handleContextMenu);
+  }, [form]);
+
+  useEffect(() => {
     if (!form || !form.settings?.gamification?.enableBackgroundMusic) return;
     const audio = new Audio("https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3");
     audio.loop = true;

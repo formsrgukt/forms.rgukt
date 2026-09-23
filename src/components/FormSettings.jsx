@@ -9,7 +9,7 @@ function FormSettings({ form, updateFormMeta }) {
     responses: { acceptingResponses: true, closedMessage: "This form is no longer accepting responses.", limitOnePerUser: false, allowEditing: false, limitResponses: false, expirationDate: "", maxResponses: "", preventDuplicateIds: false },
     privacy: { collectEmail: false, anonymousResponses: true, showRespondentIdentity: false },
     presentation: { showProgressBar: false, shuffleQuestions: false, showSubmitAnotherResponse: true, confirmationMessage: "Your response has been recorded.", redirectUrl: "", focusMode: false },
-    proctoring: { antiPaste: false, tabSwitchLimit: false, maxTabSwitches: 3, requireWebcamSnapshot: false },
+    proctoring: { antiPaste: false, tabSwitchLimit: false, maxTabSwitches: 3, requireWebcamSnapshot: false, fullscreenMode: false, disableRightClick: false },
     gamification: { enableConfetti: false, soundEffects: false, enableBackgroundMusic: false, cursorEffect: 'none' },
     geofencing: { enabled: false, latitude: '', longitude: '', radiusMeters: 500 },
     accessibility: { enableVoiceRead: false },
@@ -275,6 +275,18 @@ function FormSettings({ form, updateFormMeta }) {
             description="Take a photo of the respondent when they submit the form to verify identity."
             checked={settings.proctoring?.requireWebcamSnapshot || false} 
             onChange={(v) => updateSetting('proctoring', 'requireWebcamSnapshot', v)} 
+          />
+          <SettingToggle 
+            label="Require Fullscreen" 
+            description="Require respondents to enter fullscreen mode to take the form. Form cannot be submitted if they exit."
+            checked={settings.proctoring?.fullscreenMode || false} 
+            onChange={(v) => updateSetting('proctoring', 'fullscreenMode', v)} 
+          />
+          <SettingToggle 
+            label="Disable Right-Click" 
+            description="Prevent respondents from opening the context menu or inspecting the page."
+            checked={settings.proctoring?.disableRightClick || false} 
+            onChange={(v) => updateSetting('proctoring', 'disableRightClick', v)} 
           />
         </div>
       </div>
