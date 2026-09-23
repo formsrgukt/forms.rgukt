@@ -690,6 +690,11 @@ function FormViewer() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (currentPageIndex < pages.length - 1) {
+      handleNextPage();
+      return;
+    }
+    
     const newErrors = {};
     let isValid = true;
     
